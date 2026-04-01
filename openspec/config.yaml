@@ -1,0 +1,45 @@
+schema: spec-driven
+context: |
+  项目定位：本项目是面向 A 股普通投资者的 AI 投资决策辅助产品，核心目标是通过结构化分析、风险提示、行为干预与复盘闭环，帮助用户减少决策错误，而不是直接给出买卖指令。
+
+  当前阶段：优先完成产品落地，不考虑商业化、定价和收入模式。baseline specs 表达的是目标产品能力基线，不是当前代码现状；当前实现差距继续以 `structure/investment_current_implementation_gap_audit.md` 和后续 change proposals 管理。
+
+  技术栈：
+  - 前端：React 19 + TypeScript + Vite
+  - 后端：FastAPI + SQLAlchemy + PostgreSQL
+
+  文档治理：
+  - `structure/` 保存长文基线文档，是产品、架构、数据库、路线图、执行板的详细说明层。
+  - `openspec/` 是规格治理层，负责沉淀 baseline specs 和管理未来 change proposals。
+  - 写 proposal、specs、design、tasks 时，必须同步参考 `PROJECT_CONTEXT.md`、`PROJECT_README.md`、`structure/investment_document_master_index.md`、`structure/investment_engineering_kickoff_checklist.md`、`structure/investment_team_execution_board.md`、`structure/investment_current_implementation_gap_audit.md`。
+
+  当前实现判断：
+  - 当前代码仍偏 MVP / demo，尚未完全对齐 `structure/` 中的目标产品基线。
+  - 认证、API 契约、数据库结构、安全配置、错误模型和观察列表闭环是当前最明显的收口差距。
+
+  写作与设计约束：
+  - 输出必须方案化、结构化、具体可执行，不写空泛建议。
+  - 优先从产品设计和系统设计角度分析，再落到实现。
+  - 所有设计都要说明理由与取舍，优先选择最合适方案，而不是最复杂方案。
+  - 设计必须考虑异步边界、可维护性、成本效益、安全、监控、容错和数据治理。
+  - 若发现当前代码与目标基线冲突，优先围绕目标基线写规格，再在 design 和 tasks 中说明改造路径。
+rules:
+  proposal:
+    - "正文必须使用中文；change 目录名必须使用英文 kebab-case，并符合 `p0|p1|p2-<domain>-<goal>` 命名模式。"
+    - "`Why` 只解释业务动因、问题背景和为什么现在要做，不提前展开实现细节。"
+    - "`Capabilities` 中只列真正发生 requirement 变化的 capability；纯实现细节或局部重构不应伪装成 capability 变化。"
+    - "`Impact` 必须写明关联的 `structure` 基线文档、受影响的执行板泳道，以及预计受影响的前端/后端/数据库代码区域。"
+  specs:
+    - "顶层 baseline specs 固定放在 `openspec/specs/<capability>/spec.md`，并使用 `## Purpose` + `## Requirements` 结构；未来 change 的 delta specs 固定放在 `openspec/changes/<change>/specs/<capability>/spec.md`。"
+    - "change delta specs 只使用官方一级标题：`## ADDED Requirements`、`## MODIFIED Requirements`、`## REMOVED Requirements`、`## RENAMED Requirements`；不要发明自定义一级标题。"
+    - "capability 名必须使用英文 kebab-case；Requirement 和 Scenario 名必须使用中文，便于和现有中文文档体系对齐。"
+    - "Requirement 正文必须使用 `SHALL` 或 `MUST` 这类规范性表达；每个 Requirement 至少包含一个 `#### Scenario`。"
+    - "写 MODIFIED Requirements 时，必须复制并更新完整 requirement block，避免 archive 时丢失约束。"
+  design:
+    - "design.md 必须使用中文正文，并在模板基础上补齐 `Migration Plan` 和 `Open Questions`。"
+    - "必须解释当前代码现状与目标基线之间的差距，并覆盖接口、数据、异步边界、安全、降级、监控影响。"
+    - "关键技术决策必须说明为何选择该方案，以及放弃了哪些替代方案。"
+  tasks:
+    - "任务最多分 4 组，顺序固定为 `## 1. Contract`、`## 2. Backend/Data`、`## 3. Frontend`、`## 4. QA/Release`。"
+    - "每条任务都必须是单次会话可完成的 checkbox，格式严格使用 `- [ ] X.Y 描述`。"
+    - "每组任务都要能够映射回 `structure/investment_team_execution_board.md` 中的一项或一类任务，避免出现无法落板的工作项。"

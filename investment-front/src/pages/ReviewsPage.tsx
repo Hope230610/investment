@@ -1,0 +1,112 @@
+import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { Calendar, CheckCircle2, Clock } from 'lucide-react';
+
+import { apiGet } from '../api';
+import type { ReviewTask } from '../types';
+
+
+export default function ReviewsPage() {
+  const [reviews, setReviews] = useState<ReviewTask[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadReviews = async () => {
+      try {
+        const data = await apiGet<ReviewTask[]>('/api/v1/reviews');
+        if (!cancelled) {
+          setReviews(data);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    loadReviews().catch(() => {
+      if (!cancelled) {
+        setLoading(false);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const pending = reviews.filter((task) => task.status === 'pending' || task.status === 'expired');
+  const completed = reviews.filter((task) => task.status === 'completed');
+
+  if (loading) return <div className="p-8 text-center text-stone-400">加载中...</div>;
+
+  return (
+    <div className="p-4 space-y-8">
+      <div className="space-y-2">
+        <h2 className="text-2xl font-bold tracking-tight">复盘任务</h2>
+        <p className="text-sm text-stone-400">管理到期的复盘事项，把分析真正闭环。</p>
+      </div>
+
+      <section className="space-y-4">
+        <div className="flex items-center gap-2 px-1">
+          <Clock size={16} className="text-amber-500" />
+          <h3 className="text-xs font-bold text-stone-400 uppercase tracking-widest">待处理 ({pending.length})</h3>
+        </div>
+        <div className="space-y-3">
+          {pending.length > 0 ? pending.map((task) => (
+            <div key={task.id} className="bg-white rounded-2xl p-4 border border-stone-100 card-shadow space-y-4">
+              <div className="flex justify-between items-start">
+                <div>
+                  <h4 className="font-bold text-lg">{task.stock_name}</h4>
+                  <p className="text-[10px] text-stone-400 uppercase tracking-widest mt-0.5">
+                    来源：{task.scenario === 'single_stock_check' ? '单股咨询' : task.scenario === 'pre_trade_check' ? '交易前自检' : '交易后复盘'}
+                  </p>
+                </div>
+                <div className="px-2 py-1 bg-amber-50 text-amber-600 rounded text-[10px] font-bold">
+                  {task.status === 'expired' ? '已到期' : '待执行'}
+                </div>
+              </div>
+              <div className="flex items-center justify-between pt-4 border-t border-stone-50">
+                <div className="flex items-center gap-2 text-stone-400">
+                  <Calendar size={14} />
+                  <span className="text-xs">{new Date(task.review_at).toLocaleDateString()}</span>
+                </div>
+                <Link
+                  to={`/analysis/post-trade?stock_id=${task.stock_id || ''}&stock_name=${encodeURIComponent(task.stock_name)}`}
+                  className="px-4 py-2 bg-ink text-white rounded-xl text-xs font-bold"
+                >
+                  去复盘
+                </Link>
+              </div>
+            </div>
+          )) : (
+            <div className="p-12 text-center bg-stone-50 rounded-2xl border border-dashed border-stone-200">
+              <p className="text-sm text-stone-400">暂无待复盘任务</p>
+            </div>
+          )}
+        </div>
+      </section>
+
+      {completed.length > 0 && (
+        <section className="space-y-4 opacity-60">
+          <div className="flex items-center gap-2 px-1">
+            <CheckCircle2 size={16} className="text-emerald-500" />
+            <h3 className="text-xs font-bold text-stone-400 uppercase tracking-widest">已完成</h3>
+          </div>
+          <div className="space-y-2">
+            {completed.map((task) => (
+              <div key={task.id} className="bg-white rounded-xl p-3 border border-stone-100 flex items-center justify-between">
+                <span className="font-bold text-sm">{task.stock_name}</span>
+                <span className="text-[10px] text-stone-400">
+                  已于 {new Date(task.updated_at).toLocaleDateString()} 完成
+                </span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+    </div>
+  );
+}

@@ -1,0 +1,54 @@
+version: '3.8'
+
+services:
+  # 后端应用
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: investment-app
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}
+      - SECRET_KEY=${SECRET_KEY}
+      - DEBUG=${DEBUG:-false}
+      - APP_NAME=${APP_NAME:-"AI投资决策助手"}
+    depends_on:
+      - db
+    volumes:
+      - .:/app
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+  # 数据库
+  db:
+    image: postgres:15-alpine
+    container_name: investment-db
+    environment:
+      - POSTGRES_DB=${DB_NAME}
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # 数据库管理工具
+  adminer:
+    image: adminer:latest
+    container_name: investment-adminer
+    environment:
+      - ADMINER_DEFAULT_SERVER=db
+    ports:
+      - "8080:8080"
+    depends_on:
+      - db
+
+volumes:
+  postgres_data:
+    driver: local
