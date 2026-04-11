@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useLocation } from 'react-router-dom';
 import {
   AlertCircle,
   AlertTriangle,
@@ -19,6 +19,9 @@ import { AnimatePresence, motion } from 'motion/react';
 import { apiGet, apiPost } from '../api';
 import type { AnalysisDetail, OutputMarkType } from '../types';
 import { addFocusReason, addToWatchlist, cn, getWatchlist } from '../utils';
+import LearningFeedbackCard from '../components/LearningFeedbackCard';
+import { computeLearningFeedback } from '../utils/learningFeedback';
+import type { LearningFeedbackData } from '../components/LearningFeedbackCard';
 
 
 function formatDateTime(value?: string | null) {
@@ -102,6 +105,7 @@ function ProcessingState({ stockId }: { stockId?: string }) {
 
 export default function ResultPage() {
   const { id } = useParams();
+  const location = useLocation();
 
   const [analysis, setAnalysis] = useState<AnalysisDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -113,6 +117,50 @@ export default function ResultPage() {
   const [isInWatchlist, setIsInWatchlist] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [savingReason, setSavingReason] = useState(false);
+
+  // Learning feedback card state
+  const [showFeedback, setShowFeedback] = useState(false);
+  const [feedbackData, setFeedbackData] = useState<LearningFeedbackData | null>(null);
+  const [feedbackLoading, setFeedbackLoading] = useState(false);
+
+  // Retrieve review form data passed from PostTradeInput
+  const reviewFormData = (location.state as { reviewFormData?: import('../utils/learningFeedback').ReviewFormData })?.reviewFormData;
+
+  // Compute feedback once analysis is loaded and this is a post_trade_review
+  useEffect(() => {
+    if (!analysis || analysis.status !== 'ready') return;
+    if (analysis.scenario !== 'post_trade_review') return;
+    if (!reviewFormData) return;
+
+    const scenarioPayload = analysis.decision_card
+      ? { /* populated from scenario_payload in real impl */ }
+      : null;
+
+    const computed = computeLearningFeedback(
+      reviewFormData,
+      scenarioPayload,
+    );
+    if (computed) {
+      setFeedbackData(computed);
+      // Show card with a slight delay so user can orient on the result first
+      const timer = window.setTimeout(() => setShowFeedback(true), 800);
+      return () => clearTimeout(timer);
+    }
+  }, [analysis, reviewFormData]);
+
+  const handleFeedbackConfirm = async () => {
+    setFeedbackLoading(true);
+    // TODO: POST to backend to persist tag updates and judgment history
+    // POST /api/v1/profile/learning-feedback
+    // { tagUpdates, judgmentQualityPercent, judgmentBreakdown }
+    await new Promise(resolve => setTimeout(resolve, 800)); // simulate async
+    setFeedbackLoading(false);
+    setShowFeedback(false);
+  };
+
+  const handleFeedbackDismiss = () => {
+    setShowFeedback(false);
+  };
 
   useEffect(() => {
     if (!id) {
@@ -158,13 +206,14 @@ export default function ResultPage() {
   }, [analysis?.stock_id]);
 
   const decisionCard = analysis?.decision_card;
-  const quote = decisionCard?.stock_snapshot;
-  const companyProfile = decisionCard?.company_profile;
-  const recentEvents = decisionCard?.recent_events || [];
+  const quote = analysis?.stock_snapshot;
+  const companyProfile = analysis?.company_profile;
+  const recentEvents = analysis?.recent_events || [];
   const stockName = analysis?.stock_name || analysis?.stock_id || '分析结果';
   const stockIndustry = analysis?.stock_industry || companyProfile?.board_name || '未识别行业';
   const market = analysis?.stock_market || analysis?.stock_id.slice(0, 2) || '--';
-  const validUntil = decisionCard?.valid_until || analysis?.valid_until;
+  const validUntil = analysis?.valid_until;
+  const dataAsOf = analysis?.data_as_of;
   const isExpired = validUntil ? Date.now() > new Date(validUntil).getTime() : analysis?.status === 'expired';
 
   const handleAddToWatchlist = () => {
@@ -188,7 +237,6 @@ export default function ResultPage() {
 
     try {
       await apiPost(`/api/v1/analysis/${id}/record-reason`, {
-        analysis_id: Number(id),
         stock_id: analysis.stock_id,
         reason: focusReason.trim(),
       });
@@ -247,7 +295,7 @@ export default function ResultPage() {
     );
   }
 
-  if (!analysis || analysis.status === 'processing' || !decisionCard) {
+  if (!analysis || analysis.status === 'processing' || (!decisionCard && analysis.status !== 'partial_ready')) {
     return <ProcessingState stockId={analysis?.stock_id} />;
   }
 
@@ -297,6 +345,19 @@ export default function ResultPage() {
         以下内容用于辅助判断，不构成直接投资建议
       </div>
 
+      {analysis.status === 'partial_ready' && (
+        <motion.div
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-amber-50 border border-amber-100 rounded-2xl px-4 py-3 flex gap-3 items-start"
+        >
+          <Info size={16} className="text-amber-500 shrink-0 mt-0.5" />
+          <div className="text-xs text-amber-800 leading-relaxed">
+            <span className="font-bold">部分就绪</span>：部分模块数据暂时缺失，分析结论已可用，但部分内容可能不够完整，请留意各板块的降级提示。
+          </div>
+        </motion.div>
+      )}
+
       {analysis.intervention && (
         <motion.div
           initial={{ opacity: 0, y: 12 }}
@@ -337,7 +398,7 @@ export default function ResultPage() {
               </div>
             </div>
             <div className="text-[10px] text-stone-400">
-              数据时间：{formatDateTime(decisionCard.data_as_of)}
+              数据时间：{formatDateTime(dataAsOf)}
             </div>
           </div>
           <button
@@ -418,7 +479,7 @@ export default function ResultPage() {
               </div>
               <div className="flex-1 space-y-1">
                 <p className="text-sm text-stone-600 leading-relaxed">{item.text}</p>
-                <OutputTag type={item.tag} />
+                <OutputTag type={item.mark_type} />
               </div>
             </div>
           ))}
@@ -475,22 +536,32 @@ export default function ResultPage() {
       <section className="bg-white rounded-2xl p-4 border border-stone-100 space-y-3">
         <div className="flex items-center justify-between">
           <h3 className="text-[10px] font-bold text-stone-300 uppercase tracking-widest">市场背景</h3>
-          <OutputTag type={analysis.market_context?.tag || 'model_inference'} />
+          {analysis.status === 'partial_ready' ? (
+            <span className="text-[10px] text-amber-500">数据暂时缺失</span>
+          ) : (
+            <OutputTag type={analysis.market_context?.mark_type || 'model_inference'} />
+          )}
         </div>
-        <div className="space-y-1">
-          <div className="text-sm font-bold">{analysis.market_context?.market_event || '--'}</div>
-          <p className="text-xs text-stone-500">{analysis.market_context?.impact_boundary || '--'}</p>
-        </div>
+        {analysis.market_context ? (
+          <div className="space-y-1">
+            <div className="text-sm font-bold">{analysis.market_context.market_event || '--'}</div>
+            <p className="text-xs text-stone-500">{analysis.market_context.impact_boundary || '--'}</p>
+          </div>
+        ) : (
+          <p className="text-xs text-stone-400">暂时没有获取到市场背景信息。</p>
+        )}
       </section>
 
       <section className="bg-white rounded-2xl p-4 border border-stone-100 space-y-3">
         <div className="flex items-center justify-between">
           <h3 className="text-[10px] font-bold text-stone-300 uppercase tracking-widest">公司概况</h3>
-          {companyProfile?.board_name && (
+          {analysis.status === 'partial_ready' ? (
+            <span className="text-[10px] text-amber-500">数据暂时缺失</span>
+          ) : companyProfile?.board_name ? (
             <span className="text-[10px] px-2 py-1 rounded-full bg-stone-100 text-stone-500">
               {companyProfile.board_name}
             </span>
-          )}
+          ) : null}
         </div>
         <p className="text-sm text-stone-600 leading-relaxed">
           {companyProfile?.description || '暂时没有抓取到更完整的公司介绍。'}
@@ -561,7 +632,7 @@ export default function ResultPage() {
             <div className="space-y-2">
               <h4 className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">数据来源</h4>
               <div className="flex flex-wrap gap-2">
-                {decisionCard.data_sources.map((source) => (
+                {analysis.data_sources.map((source) => (
                   <span
                     key={source}
                     className="px-2 py-1 rounded-full bg-white text-xs text-stone-500 border border-stone-200"
@@ -585,7 +656,11 @@ export default function ResultPage() {
           </div>
           <div className="text-left">
             <div className="text-sm font-bold text-blue-900">AI 解释层</div>
-            <div className="text-[10px] text-blue-600 font-medium">把这张分析卡片讲得更直白一点</div>
+            <div className="text-[10px] text-blue-600 font-medium">
+              {analysis.status === 'partial_ready' && !analysis.explanation_layer
+                ? '解释层数据暂时缺失'
+                : '把这张分析卡片讲得更直白一点'}
+            </div>
           </div>
         </div>
         <ChevronDown size={20} className="text-blue-300 -rotate-90" />
@@ -690,6 +765,14 @@ export default function ResultPage() {
           </>
         )}
       </AnimatePresence>
+
+      <LearningFeedbackCard
+        visible={showFeedback}
+        data={feedbackData}
+        onConfirm={handleFeedbackConfirm}
+        onDismiss={handleFeedbackDismiss}
+        loading={feedbackLoading}
+      />
 
       <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white/80 backdrop-blur-xl border-t border-stone-100 p-4 safe-bottom z-30">
         <div className="flex gap-3">

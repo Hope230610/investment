@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { AlertCircle, CheckCircle2, ChevronRight, Search, XCircle } from 'lucide-react';
 
 import { apiPost } from '../api';
 import { cn } from '../utils';
+import type { ReviewFormData } from '../utils/learningFeedback';
 
 
 const behaviorPatternOptions = [
@@ -18,6 +19,7 @@ const behaviorPatternOptions = [
 
 export default function PostTradeInput() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const stockId = searchParams.get('stock_id') || '';
   const stockName = searchParams.get('stock_name') || '';
@@ -45,7 +47,7 @@ export default function PostTradeInput() {
     setError(null);
 
     try {
-      const data = await apiPost<{ id: number }>('/api/v1/analysis', {
+      const data = await apiPost<{ id: string }>('/api/v1/analysis', {
         scenario: 'post_trade_review',
         stock_id: stockId,
         scenario_payload: {
@@ -54,9 +56,22 @@ export default function PostTradeInput() {
           plan_deviation: deviation,
           judgement_quality: judgementQuality,
           behavior_patterns: behaviorPatterns,
+          // Pass emotion level if available from context
+          emotion_level: 3,
         },
       });
-      navigate(`/analysis/${data.id}/result`);
+
+      // Pack review form data into location state so ResultPage can use it
+      const reviewFormData: ReviewFormData = {
+        actionTaken: action.trim(),
+        outcomeSummary: outcome.trim(),
+        planDeviation: deviation,
+        judgementQuality,
+        behaviorPatterns,
+        emotionLevel: 3,
+      };
+
+      navigate(`/analysis/${data.id}/result`, { state: { reviewFormData } });
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : '创建复盘失败');
     } finally {
