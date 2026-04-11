@@ -83,13 +83,22 @@
 
 ~~3. 反馈卡形态？~~ → **已确认：轻阻塞 bottom sheet**，不打断用户浏览结果页
 
-4. **"忽略"语义**：用户点"忽略"是否等同于拒绝该标签更新？
-   - 方案 A：忽略 = 静默关闭，标签不写入，下次复盘不受影响
-   - 方案 B：忽略 = 显式拒绝，系统记录"用户拒绝该标签"，未来不重复推荐
-   → 当前实现为方案 A，待产品确认
+~~4. "忽略"语义~~ → **已确认：路径 C — 三按钮方案**
+
+用户有三种选择，语义明确：
+
+| 按钮 | 行为 | localStorage 状态 |
+|------|------|-----------------|
+| 确认 | 写入 profile，关闭 | `feedback_dismissed_{id}` = `"confirmed"` |
+| 稍后 | 不写入，关闭，下次复盘再出现（≤3次） | `feedback_showcount_{id}` += 1 |
+| 忽略 | 不写入，关闭，永久跳过 | `feedback_dismissed_{id}` = `"true"` |
+
+设计理由：覆盖用户真实心理（懒得点 / 不同意 / 好奇），不强迫决策。"稍后"给了动机 A 用户缓冲；"忽略"给了动机 B 用户明确的拒绝渠道；两者都不写入 profile，保证数据质量。
+
+**注意**：点击 backdrop（sheet 外区域）= 触发"忽略"（永久跳过），因为这是移动端标准交互模式。
 
 5. **判断质量百分比的分母**：只计入"主要来自判断"和"主要来自运气"两种选项，还是包含"部分判断+运气"折算？
-   → 当前实现：100分/50分/0分/-1分（排除），不含法计算
+   → 当前实现：100分/50分/0分（含50），待产品确认最终分母方案
 
 6. **情绪 sparkline 的真实数据来源**：emotion_history 表是否需要在本次同步新建？还是作为独立后续 change？
    → 建议作为独立后续 change，不阻塞本次 UI
@@ -102,6 +111,8 @@
 - [x] `learningFeedback.ts`：`computeLearningFeedback` 工具函数 + synthetic emotion history
 - [x] `PostTradeInput.tsx`：传递 `reviewFormData` 到 `ResultPage`
 - [x] `ResultPage.tsx`：集成反馈卡触发逻辑
+- [x] **三按钮交互**：`确认`（写入 profile）/ `稍后`（下次复盘再出现，最多3次）/ `忽略`（永久跳过）
+- [x] **localStorage 追踪**：`feedback_dismissed_{id}` + `feedback_showcount_{id}`，页面挂载时读取，阻止已跳过/已确认的卡重复出现
 - [ ] 单元测试：覆盖 `computeLearningFeedback` 所有分支
 
 ### Phase 2（后端接入）

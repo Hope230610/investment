@@ -6,7 +6,7 @@
 
 ### Modified Capabilities
 
-- `post-trade-review`: 复盘提交后新增反馈卡交互，用户在收到分析结果后 800ms 自动弹出。流程从"提交 → 结果页"扩展为"提交 → 结果页 → 反馈卡 → 确认/忽略"。
+- `post-trade-review`: 复盘提交后新增反馈卡交互，用户在收到分析结果后 800ms 自动弹出。流程从"提交 → 结果页"扩展为"提交 → 结果页 → 反馈卡（三按钮）→ 确认/稍后/忽略"。
 
 ## Capabilities
 
@@ -15,11 +15,11 @@
 ```
 ┌─────────────────────────────────────────────────────┐
 │  LearningFeedbackCard · Bottom Sheet (轻阻塞)       │
-│  trigger: post_trade_review result loaded + 800ms  │
-│  backdrop: bg-black/40, blur                       │
+│  trigger: post_trade_review result loaded + 800ms │
+│  backdrop click → 触发「忽略」（永久跳过）           │
 ├─────────────────────────────────────────────────────┤
 │                                                     │
-│  📖 本次复盘 · 系统学到了这些                       │
+│  📖 本次复盘 · 系统学到了这些 [第2次展示]        │
 │                                                     │
 │  🏷️ 行为标签更新                                   │
 │  ┌───────────────────────────────────────────┐    │
@@ -48,22 +48,31 @@
 │                                                     │
 │  💡 建议：减少连续上涨场景下的追涨冲动               │
 │                                                     │
-│  [确认]                              [忽略]          │
+│  ┌─────────────────────────────────────────────┐  │
+│  │  [X忽略]  [⏱稍后 (2/3)]  [✓确认]         │  │
+│  └─────────────────────────────────────────────┘  │
+│  忽略=跳过不更新 | 稍后=下次复盘再提醒 | 确认=写入  │
 └─────────────────────────────────────────────────────┘
 ```
 
-### Trigger Logic
+### Trigger + State Logic
 
 ```
 PostTradeInput.handleSubmit
   → navigate(..., { state: { reviewFormData } })
     → ResultPage (on mount)
-      → analysis loaded + scenario === 'post_trade_review' + has reviewFormData
-        → computeLearningFeedback(reviewFormData)
-          → 800ms delay
-            → LearningFeedbackCard.visible = true
-              → onConfirm → POST /api/v1/profile/learning-feedback
-              → onDismiss → card closes, no write
+      ├── 读 localStorage:
+      │   feedback_dismissed_{id} = "true"?     → 不展示（永久跳过）
+      │   feedback_dismissed_{id} = "confirmed"? → 不展示（已确认）
+      │   feedback_showcount_{id} ≥ 3?          → 不展示（已达上限）
+      │   → 通过全部检查 → computeLearningFeedback()
+      │       → 800ms delay → LearningFeedbackCard.visible = true
+      │
+      └── 用户操作：
+          ├── onConfirm  → 写入profile → localStorage[dismissed]="confirmed" → 关闭
+          ├── onLater   → 不写入 → localStorage[count]++ → 关闭（下次复盘可再出现）
+          └── onDismiss  → 不写入 → localStorage[dismissed]="true" → 关闭（永久跳过）
+              backdrop点击 → 同 onDismiss（移动端标准交互）
 ```
 
 ### Judgment Quality Computation
@@ -155,11 +164,20 @@ interface TagUpdate {
 
 ## Verified Implementation
 
-已在 `6ee2677` 提交，TypeScript 零错误，Vite build 零警告：
+已在 `6ee2677` + `???` 提交，TypeScript 零错误，Vite build 零警告：
 
 ```
-investment-front/src/components/LearningFeedbackCard.tsx   +468
+investment-front/src/components/LearningFeedbackCard.tsx   +468 (+新三按钮)
 investment-front/src/pages/PostTradeInput.tsx              +21
-investment-front/src/pages/ResultPage.tsx                   +119
+investment-front/src/pages/ResultPage.tsx                   +119 (+localStorage追踪)
 investment-front/src/utils/learningFeedback.ts             +206
 ```
+
+关键验证点：
+- [x] 三按钮（确认/稍后/忽略）渲染正确
+- [x] 稍后按钮显示当前展示次数 (n/3)
+- [x] 第 n 次展示时 header 显示 badge
+- [x] backdrop 点击触发永久跳过
+- [x] localStorage 在页面挂载时读取，防止重复展示
+- [x] 展示次数 ≥ 3 时自动停止自动弹出
+- [x] hint 文案解释三个按钮语义
