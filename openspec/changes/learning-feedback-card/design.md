@@ -1,0 +1,165 @@
+## What Capabilities Change
+
+### New Capabilities
+
+- `learning-feedback-card`: 画像学习闭环的前端反馈展示层。用户在 post-trade-review 提交后，看到系统的"学习结果"（行为标签更新、判断质量、情绪趋势），并通过确认机制参与画像建设。底层依赖 `profile-learning-closed-loop` 后端接口（Phase 2）。
+
+### Modified Capabilities
+
+- `post-trade-review`: 复盘提交后新增反馈卡交互，用户在收到分析结果后 800ms 自动弹出。流程从"提交 → 结果页"扩展为"提交 → 结果页 → 反馈卡 → 确认/忽略"。
+
+## Capabilities
+
+### Learning Feedback Card
+
+```
+┌─────────────────────────────────────────────────────┐
+│  LearningFeedbackCard · Bottom Sheet (轻阻塞)       │
+│  trigger: post_trade_review result loaded + 800ms  │
+│  backdrop: bg-black/40, blur                       │
+├─────────────────────────────────────────────────────┤
+│                                                     │
+│  📖 本次复盘 · 系统学到了这些                       │
+│                                                     │
+│  🏷️ 行为标签更新                                   │
+│  ┌───────────────────────────────────────────┐    │
+│  │  + 新增「追涨倾向」                         │    │
+│  │  来源：连续上涨触发 + 本次复盘确认           │    │
+│  └───────────────────────────────────────────┘    │
+│                                                     │
+│  📊 判断质量                                       │
+│  ┌───────────────────────────────────────────┐    │
+│  │  68%（+5%）    ● 绿   [近7天持续提升 ↑]  │    │
+│  │  ──────────────────────────────────────   │    │
+│  │  判断基本可靠，存在一定情绪干扰              │    │
+│  │                                             │    │
+│  │  构成分析：                                  │    │
+│  │  主要来自判断    45% ████████████          │    │
+│  │  部分判断+运气   30% ██████████              │    │
+│  │  主要来自运气    20% ██████                 │    │
+│  │  难以区分         5% ██                     │    │
+│  └───────────────────────────────────────────┘    │
+│                                                     │
+│  📈 情绪趋势（最近30天）                            │
+│  ┌───────────────────────────────────────────┐    │
+│  │  [SVG sparkline]                          │    │
+│  │  均值 2.4  |  本次 3  |  ↑略高于均值      │    │
+│  └───────────────────────────────────────────┘    │
+│                                                     │
+│  💡 建议：减少连续上涨场景下的追涨冲动               │
+│                                                     │
+│  [确认]                              [忽略]          │
+└─────────────────────────────────────────────────────┘
+```
+
+### Trigger Logic
+
+```
+PostTradeInput.handleSubmit
+  → navigate(..., { state: { reviewFormData } })
+    → ResultPage (on mount)
+      → analysis loaded + scenario === 'post_trade_review' + has reviewFormData
+        → computeLearningFeedback(reviewFormData)
+          → 800ms delay
+            → LearningFeedbackCard.visible = true
+              → onConfirm → POST /api/v1/profile/learning-feedback
+              → onDismiss → card closes, no write
+```
+
+### Judgment Quality Computation
+
+```
+输入: judgementQuality (表单选择)
+  "主要来自判断"       → 100 分
+  "部分判断+部分运气" → 50 分
+  "主要来自运气"      → 0 分
+  "难以区分"          → 排除（不计入）
+
+聚合: 百分比 = Σ分数 / 计入次数 × 100%
+Delta: 与历史平均值差值
+Level: ≥80% 绿 | 60-80% 黄 | <60% 红
+
+构成分析（固定比例，用于UI展示）:
+  主要来自判断 45% | 部分判断+运气 30% | 主要来自运气 20% | 难以区分 5%
+```
+
+### Behavior Tag Inference
+
+```
+规则引擎（前端计算）:
+
+  intent = 'buy'/'add_position' AND trigger = '连续上涨'/'看到大涨'
+    → 新增「追涨倾向」
+
+  intent = 'sell'/'reduce_position' AND trigger = '快速下跌'/'恐慌性抛盘'
+    → 新增「恐慌卖出」
+
+  兜底: 用户勾选的行为模式 → 来源标记为「本次复盘确认」
+```
+
+### Emotion Sparkline
+
+```
+- 纯 SVG path，无第三方依赖
+- X轴: 最近30天日期
+- Y轴: emotion_level 1-5
+- 均值参考线（虚线）
+- 本次值: 带标注的蓝色圆点
+- 预警: 本次 > 均值 → ⚠️ 略高于均值
+- 空状态: "数据不足，无法绘制趋势"
+```
+
+## Technical Design
+
+### File Structure
+
+```
+investment-front/src/
+├── components/
+│   └── LearningFeedbackCard.tsx    # 组件（EmotionSparkline, JudgmentBar, TagUpdateRow, TrendBadge）
+├── utils/
+│   └── learningFeedback.ts          # computeLearningFeedback + types
+└── pages/
+    ├── PostTradeInput.tsx          # 传递 reviewFormData via location.state
+    └── ResultPage.tsx              # 集成触发逻辑
+```
+
+### Key Types
+
+```typescript
+// LearningFeedbackData
+interface LearningFeedbackData {
+  tagUpdates: TagUpdate[];              // 标签更新列表
+  judgmentQualityPercent: number;         // 0-100
+  judgmentQualityDelta: number;         // vs 历史均值
+  judgmentLevel: 'high' | 'medium' | 'low';
+  judgmentBreakdown: JudgmentBreakdown;
+  judgmentTrend: { direction: 'up' | 'down' | 'stable'; description: string };
+  suggestion: string;
+  emotionHistory: EmotionDataPoint[];   // 30天数据
+  currentEmotionLevel: number;           // 1-5
+}
+
+interface TagUpdate {
+  tag: string;
+  type: 'add' | 'remove' | 'upgrade';
+  source: string;
+}
+```
+
+### Animation
+
+- Backdrop: fade 200ms ease-out
+- Sheet: spring `{ damping: 30, stiffness: 300 }` 从底部滑入
+- Exit: 同动画逆向（退出比进入更快约 60-70%）
+
+## Verified Implementation
+
+已在 `6ee2677` 提交，TypeScript 零错误，Vite build 零警告：
+
+```
+investment-front/src/components/LearningFeedbackCard.tsx   +468
+investment-front/src/pages/PostTradeInput.tsx              +21
+investment-front/src/pages/ResultPage.tsx                   +119
+investment-front/src/utils/learningFeedback.ts             +206
+```
