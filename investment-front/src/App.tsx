@@ -12,6 +12,7 @@ import { cn } from './utils';
 
 import HomePage from './pages/HomePage';
 import LoginPage from './pages/LoginPage';
+import MePage from './pages/MePage';
 import ProfilePage from './pages/ProfilePage';
 import StockSearchPage from './pages/StockSearchPage';
 import SingleStockInput from './pages/SingleStockInput';
@@ -33,7 +34,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
     { path: '/watchlist', label: '观察', icon: Star },
     { path: '/reviews', label: '复盘', icon: LayoutGrid },
     { path: '/records', label: '记录', icon: History },
-    { path: '/profile', label: '我的', icon: User },
+    { path: '/me', label: '我的', icon: User },
   ];
 
   if (isLoginPage) {
@@ -90,6 +91,7 @@ export default function App() {
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/" element={<RequireAuth><HomePage /></RequireAuth>} />
+            <Route path="/me" element={<RequireAuth><MePage /></RequireAuth>} />
             <Route path="/profile" element={<RequireAuth><ProfilePage /></RequireAuth>} />
             <Route path="/watchlist" element={<RequireAuth><WatchlistPage /></RequireAuth>} />
             <Route path="/stock/search" element={<RequireAuth><StockSearchPage /></RequireAuth>} />

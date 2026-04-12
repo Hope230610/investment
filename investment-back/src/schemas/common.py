@@ -27,3 +27,20 @@ class PaginatedResponse(BaseModel, Generic[T]):
     total: int
     skip: int
     limit: int
+
+
+class ErrorDetail(BaseModel):
+    """统一错误响应结构
+
+    所有业务错误、认证错误和系统错误均使用此结构返回。
+    前后端 MUST 以 code / message / request_id / retryable 作为统一解析入口。
+    """
+    code: str = "INTERNAL_ERROR"
+    message: str = "An unexpected error occurred"
+    request_id: Optional[str] = None
+    retryable: bool = False
+
+
+class ErrorResponse(BaseModel):
+    """统一错误响应包装"""
+    error: ErrorDetail

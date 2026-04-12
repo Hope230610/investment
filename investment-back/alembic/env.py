@@ -13,6 +13,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from src.core.config import get_settings
 from src.db.session import Base
 from src.models import user, stock, analysis, watchlist
+from src.models import analysis_task, analysis_result, behavior_intervention
+from src.models import watchlist_v2, user_action
 
 settings = get_settings()
 

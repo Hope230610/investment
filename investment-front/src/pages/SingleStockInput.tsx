@@ -22,7 +22,7 @@ export default function SingleStockInput() {
     setError(null);
 
     try {
-      const data = await apiPost<{ id: number }>('/api/v1/analysis', {
+      const data = await apiPost<{ id: string }>('/api/v1/analysis', {
         scenario: 'single_stock_check',
         stock_id: stockId,
         scenario_payload: { focus_reason: reason.trim() || undefined },

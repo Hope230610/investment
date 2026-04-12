@@ -18,7 +18,7 @@ class LoginResponse(BaseModel):
 
 class UserBase(BaseModel):
     username: str = Field(..., max_length=50)
-    email: EmailStr = Field(..., max_length=100)
+    email: Optional[EmailStr] = Field(default=None, max_length=100)
 
 class UserCreate(UserBase):
     password: str = Field(..., min_length=6)
@@ -48,9 +48,6 @@ class UserProfileUpdate(BaseModel):
 class UserProfile(UserProfileBase, TimestampMixin):
     id: int
     user_id: int
-    investment_goals: Optional[str] = None
-    portfolio_size: Optional[str] = None
-    preferred_sectors: Optional[List[str]] = None
 
     class Config:
         from_attributes = True

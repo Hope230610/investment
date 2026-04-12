@@ -90,7 +90,7 @@ class AnalysisGenerationService:
                     "综合价格波动、成交热度和公告事件看，当前更适合作为“继续跟踪、等待验证”的标的，"
                     "而不是凭单一信号快速下结论。"
                 ),
-                tag=OutputMarkType.MODEL_INFERENCE,
+                mark_type=OutputMarkType.MODEL_INFERENCE,
             ),
         ]
 
@@ -123,7 +123,7 @@ class AnalysisGenerationService:
                     f"短线平均振幅约 {self._fmt(metrics['avg_amplitude'])}%。"
                 ),
                 impact_boundary="以上判断主要覆盖接下来 1 到 4 周的跟踪窗口，不替代长期基本面研究。",
-                tag=OutputMarkType.MODEL_INFERENCE,
+                mark_type=OutputMarkType.MODEL_INFERENCE,
             ),
             explanation_layer=ExplanationLayer(
                 plain_text=(
@@ -188,7 +188,7 @@ class AnalysisGenerationService:
             ),
             ReasonPoint(
                 text=self._build_pre_trade_inference(chasing_risk, panic_risk, emotional_risk),
-                tag=OutputMarkType.MODEL_INFERENCE,
+                mark_type=OutputMarkType.MODEL_INFERENCE,
             ),
         ]
 
@@ -221,7 +221,7 @@ class AnalysisGenerationService:
                     f"最近 20 日累计涨跌约 {self._fmt(metrics['twenty_day_return'])}%。"
                 ),
                 impact_boundary="这类结论的有效期较短，主要服务于本次动作前的确认，不适合长期沿用。",
-                tag=OutputMarkType.MODEL_INFERENCE,
+                mark_type=OutputMarkType.MODEL_INFERENCE,
             ),
             explanation_layer=ExplanationLayer(
                 plain_text=(
@@ -282,7 +282,7 @@ class AnalysisGenerationService:
                     "复盘的关键不是证明这次赚亏是否正确，"
                     "而是确认你是否遵守了原计划，以及哪些信号下次仍值得重复使用。"
                 ),
-                tag=OutputMarkType.MODEL_INFERENCE,
+                mark_type=OutputMarkType.MODEL_INFERENCE,
             ),
         ]
 
@@ -315,7 +315,7 @@ class AnalysisGenerationService:
                     f"近 30 天抓到 {metrics['event_count']} 条相关公告或事件。"
                 ),
                 impact_boundary="这部分信息只用于补充复盘视角，不能替代交易发生当时的市场环境。",
-                tag=OutputMarkType.MODEL_INFERENCE,
+                mark_type=OutputMarkType.MODEL_INFERENCE,
             ),
             explanation_layer=ExplanationLayer(
                 plain_text=(
@@ -344,11 +344,11 @@ class AnalysisGenerationService:
             reasons=[
                 ReasonPoint(
                     text="本次外部行情或历史数据抓取不完整，无法形成稳定的事实底稿。",
-                    tag=OutputMarkType.UNCERTAINTY,
+                    mark_type=OutputMarkType.UNCERTAINTY,
                 ),
                 ReasonPoint(
                     text="当事实不完整时，任何偏乐观或偏悲观结论都容易被短期噪音放大。",
-                    tag=OutputMarkType.UNCERTAINTY,
+                    mark_type=OutputMarkType.UNCERTAINTY,
                 ),
             ],
             next_actions=[
@@ -369,7 +369,7 @@ class AnalysisGenerationService:
             market_context=MarketContext(
                 market_event="当前外部数据抓取不完整，无法可靠重建最近的价格和事件背景。",
                 impact_boundary="在事实不完整时，最稳妥的动作通常是暂缓判断，而不是补脑式推断。",
-                tag=OutputMarkType.UNCERTAINTY,
+                mark_type=OutputMarkType.UNCERTAINTY,
             ),
             explanation_layer=ExplanationLayer(
                 plain_text="现在像是在资料没收齐的情况下做判断，继续往前走比停一下更危险。",

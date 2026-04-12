@@ -1,14 +1,37 @@
 import { clearAuthSession, getAccessToken } from './auth';
 
+/** 统一错误响应结构（与后端 ErrorResponse 对应） */
+export interface UnifiedError {
+  code: string;
+  message: string;
+  request_id?: string;
+  retryable?: boolean;
+}
+
+export interface UnifiedErrorResponse {
+  error: UnifiedError;
+}
+
+/** 旧 detail 风格（向后兼容，短期保留） */
+interface LegacyErrorDetail {
+  detail: string;
+}
+
 export class ApiError extends Error {
   status: number;
+  code: string;
+  request_id?: string;
+  retryable: boolean;
   payload: unknown;
 
-  constructor(message: string, status: number, payload: unknown) {
+  constructor(message: string, status: number, code: string, request_id?: string, retryable = false, payload?: unknown) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
-    this.payload = payload;
+    this.code = code;
+    this.request_id = request_id;
+    this.retryable = retryable;
+    this.payload = payload ?? null;
   }
 }
 
@@ -28,7 +51,7 @@ function isBodyInit(value: unknown): value is BodyInit {
   );
 }
 
-async function parseResponseBody(response: Response) {
+async function parseResponseBody(response: Response): Promise<unknown> {
   if (response.status === 204) {
     return null;
   }
@@ -42,14 +65,36 @@ async function parseResponseBody(response: Response) {
   return text ? text : null;
 }
 
-function toErrorMessage(payload: unknown, fallback: string) {
-  if (payload && typeof payload === 'object' && 'detail' in payload) {
-    const detail = Reflect.get(payload, 'detail');
-    if (typeof detail === 'string' && detail.trim()) {
-      return detail;
-    }
+function parseErrorPayload(
+  payload: unknown,
+  status: number,
+): { message: string; code: string; request_id?: string; retryable: boolean } {
+  // 优先解析统一 error 结构
+  if (payload && typeof payload === 'object' && 'error' in payload) {
+    const err = (payload as UnifiedErrorResponse).error;
+    return {
+      message: err.message || 'An error occurred',
+      code: err.code || `HTTP_${status}`,
+      request_id: err.request_id,
+      retryable: err.retryable ?? false,
+    };
   }
-  return fallback;
+
+  // 旧 detail 风格（向后兼容，短期保留）
+  if (payload && typeof payload === 'object' && 'detail' in payload) {
+    const detail = (payload as LegacyErrorDetail).detail;
+    return {
+      message: typeof detail === 'string' ? detail : 'An error occurred',
+      code: `HTTP_${status}`,
+      retryable: false,
+    };
+  }
+
+  return {
+    message: `Request failed with status ${status}`,
+    code: `HTTP_${status}`,
+    retryable: false,
+  };
 }
 
 export async function apiRequest<T>(url: string, options: ApiRequestOptions = {}): Promise<T> {
@@ -81,14 +126,11 @@ export async function apiRequest<T>(url: string, options: ApiRequestOptions = {}
 
   const payload = await parseResponseBody(response);
   if (!response.ok) {
-    if (response.status === 401) {
+    if (response.status === 401 || response.status === 403) {
       clearAuthSession();
     }
-    throw new ApiError(
-      toErrorMessage(payload, `Request failed with status ${response.status}`),
-      response.status,
-      payload,
-    );
+    const { message, code, request_id, retryable } = parseErrorPayload(payload, response.status);
+    throw new ApiError(message, response.status, code, request_id, retryable, payload);
   }
 
   return payload as T;
@@ -112,4 +154,52 @@ export function apiPut<T>(
   options: Omit<ApiRequestOptions, 'method' | 'body'> = {},
 ) {
   return apiRequest<T>(url, { ...options, method: 'PUT', body });
+}
+
+// ─── Learning Feedback ──────────────────────────────────────────────────────────
+
+/** 行为标签更新项（POST learning-feedback 请求体） */
+export interface TagUpdatePayload {
+  tag: string;
+  type: 'add' | 'remove' | 'upgrade';
+  source: string;
+}
+
+/** POST /api/v1/user/profile/learning-feedback 请求体 */
+export interface LearningFeedbackPayload {
+  analysis_task_id?: string;
+  tag_updates: TagUpdatePayload[];
+  judgment_quality: string;
+  emotion_level: number;
+  intent?: string;
+  trigger_reason?: string;
+}
+
+/** POST /api/v1/user/profile/learning-feedback 响应体 */
+export interface LearningFeedbackResponse {
+  success: boolean;
+  tags_updated: number;
+  judgment_recorded: boolean;
+}
+
+/**
+ * 获取画像学习历史：情绪历史 + 判断质量历史
+ * GET /api/v1/user/profile/learning-history?days=30
+ */
+export async function getLearningHistory(days = 30) {
+  return apiGet<{
+    emotion_history: { date: string; level: number }[];
+    judgment_history: { date: string; score: number; label: string; is_hard_to_tell: boolean }[];
+  }>(`/api/v1/user/profile/learning-history?days=${days}`);
+}
+
+/**
+ * 写入学习反馈：行为标签更新 + 情绪历史 + 判断质量历史
+ * POST /api/v1/user/profile/learning-feedback
+ */
+export async function postLearningFeedback(data: LearningFeedbackPayload) {
+  return apiPost<LearningFeedbackResponse>(
+    '/api/v1/user/profile/learning-feedback',
+    data as unknown as Record<string, unknown>,
+  );
 }

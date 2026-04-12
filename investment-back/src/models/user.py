@@ -52,7 +52,7 @@ class User(TimestampMixin, Base):
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     username = Column(String(50), unique=True, index=True, nullable=False)
-    email = Column(String(100), unique=True, index=True, nullable=False)
+    email = Column(String(100), unique=True, index=True, nullable=True)
     hashed_password = Column(String(255), nullable=False)
     is_active = Column(Boolean, default=True)
 
@@ -93,8 +93,5 @@ class UserProfile(TimestampMixin, Base):
         nullable=False,
     )
     behavior_tags = Column(JSON, default=list)
-    investment_goals = Column(String(255), nullable=True)
-    portfolio_size = Column(String(50), nullable=True)
-    preferred_sectors = Column(JSON, nullable=True)
 
     user = relationship("User", back_populates="profile")

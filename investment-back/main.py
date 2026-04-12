@@ -1,22 +1,21 @@
+import uuid
+from contextvars import ContextVar
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
+import structlog
 
 from src.api.v1 import api_router
 from src.core.config import get_settings
 from src.core.logging import setup_logging
-from src.db.session import Base, SessionLocal, engine, ensure_database_exists
-from src.models.user import (
-    ExperienceLevel,
-    HoldingHorizon,
-    RiskTolerance,
-    User,
-    UserProfile,
-)
+from src.db.session import Base, engine, ensure_database_exists
 
 settings = get_settings()
 logger = setup_logging(debug=settings.DEBUG)
+
+# Request ID context variable — 可在任意位置通过 log.bind(request_id=...) 访问
+_request_id_var: ContextVar[str] = ContextVar("request_id", default="-")
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -35,6 +34,23 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         return response
 
 
+class RequestIdMiddleware(BaseHTTPMiddleware):
+    """Generate or forward request_id and bind to structlog context."""
+
+    async def dispatch(self, request: Request, call_next):
+        # Use incoming x-request-id header, or generate a new UUID
+        req_id = request.headers.get("x-request-id") or str(uuid.uuid4())
+        _request_id_var.set(req_id)
+
+        # Bind to structlog context so all log entries in this request include it
+        structlog.contextvars.clear_contextvars()
+        structlog.contextvars.bind_contextvars(request_id=req_id)
+
+        response = await call_next(request)
+        response.headers["X-Request-ID"] = req_id
+        return response
+
+
 app = FastAPI(
     title=settings.APP_NAME,
     description="Backend service for the AI investment assistant.",
@@ -45,6 +61,7 @@ app = FastAPI(
 )
 
 app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(RequestIdMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.BACKEND_CORS_ORIGINS,
@@ -82,6 +99,30 @@ async def health_check():
     return {"status": "healthy", "version": settings.APP_VERSION}
 
 
+@app.get("/ready")
+async def readiness_check():
+    """Readiness probe for load balancer / k8s.
+
+    Checks that the database is reachable.
+    Returns 200 + {status: ready} when healthy.
+    Returns 503 + {status: not ready} when unhealthy.
+    """
+    try:
+        from sqlalchemy import text
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+    except Exception as exc:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "not ready",
+                "reason": "database unreachable",
+                "detail": str(exc),
+            },
+        )
+    return {"status": "ready", "version": settings.APP_VERSION}
+
+
 @app.get("/")
 async def root():
     """Root endpoint."""
@@ -94,7 +135,7 @@ async def root():
 
 @app.on_event("startup")
 async def startup_event():
-    """Initialize database and seed a test user on startup."""
+    """Initialize database on startup."""
     logger.info("app_starting", version=settings.APP_VERSION)
 
     try:
@@ -104,40 +145,10 @@ async def startup_event():
         logger.error(
             "database_connection_encoding_error",
             error=str(exc),
-            database_url=settings.DATABASE_URL,
         )
         raise RuntimeError(
             "Database connection failed. Please verify DATABASE_URL and confirm the target PostgreSQL database exists."
         ) from exc
-
-    db = SessionLocal()
-    try:
-        if db.query(User).count() == 0:
-            logger.info("creating_test_user")
-            test_user = User(
-                username="testuser",
-                email="test@example.com",
-            )
-            test_user.set_password("testpassword123")
-            db.add(test_user)
-            db.commit()
-            db.refresh(test_user)
-
-            test_profile = UserProfile(
-                user_id=test_user.id,
-                experience_level=ExperienceLevel.NOVICE,
-                holding_horizon=HoldingHorizon.MEDIUM,
-                risk_tolerance=RiskTolerance.MEDIUM,
-                behavior_tags=[],
-            )
-            db.add(test_profile)
-            db.commit()
-
-    except Exception as exc:  # pragma: no cover - seed failure should not crash startup
-        logger.error("init_error", error=str(exc))
-        db.rollback()
-    finally:
-        db.close()
 
     logger.info("app_started")
 

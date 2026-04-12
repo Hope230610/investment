@@ -1,6 +1,17 @@
 import React, { useEffect, useRef } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { CheckCircle2, TrendingUp, TrendingDown, Minus, Lightbulb, Tag, BarChart3, Activity } from 'lucide-react';
+import {
+  CheckCircle2,
+  Clock,
+  Lightbulb,
+  Tag,
+  BarChart3,
+  Activity,
+  TrendingUp,
+  TrendingDown,
+  Minus,
+  X,
+} from 'lucide-react';
 
 import { cn } from '../utils';
 
@@ -30,6 +41,7 @@ export interface TagUpdate {
 export interface JudgmentTrend {
   direction: 'up' | 'down' | 'stable';
   description: string;
+  insufficient?: boolean;
 }
 
 export interface LearningFeedbackData {
@@ -42,6 +54,8 @@ export interface LearningFeedbackData {
   suggestion: string;
   emotionHistory: EmotionDataPoint[];
   currentEmotionLevel: number;
+  /** 本次选择了"难以区分"，判断质量数据不足，不计入历史聚合 */
+  isHardToTell?: boolean;
 }
 
 // ─── Color System ─────────────────────────────────────────────────────────────
@@ -73,13 +87,18 @@ const levelColors: Record<JudgmentQualityLevel, { bg: string; text: string; bord
 
 // ─── Sparkline ────────────────────────────────────────────────────────────────
 
+export interface EmotionDataPoint {
+  date: string;
+  level: number; // 1-5
+}
+
 interface EmotionSparklineProps {
   data: EmotionDataPoint[];
   currentLevel: number;
   mean: number;
 }
 
-function EmotionSparkline({ data, currentLevel, mean }: EmotionSparklineProps) {
+export function EmotionSparkline({ data, currentLevel, mean }: EmotionSparklineProps) {
   const svgRef = useRef<SVGSVGElement>(null);
 
   if (data.length < 2) {
@@ -271,16 +290,20 @@ interface LearningFeedbackCardProps {
   visible: boolean;
   data: LearningFeedbackData | null;
   onConfirm: () => void;
+  onLater: () => void;
   onDismiss: () => void;
   loading?: boolean;
+  showCount?: number;
 }
 
 export default function LearningFeedbackCard({
   visible,
   data,
   onConfirm,
+  onLater,
   onDismiss,
   loading = false,
+  showCount = 0,
 }: LearningFeedbackCardProps) {
   const levelConf = data ? levelColors[data.judgmentLevel] : levelColors.medium;
 
@@ -323,8 +346,15 @@ export default function LearningFeedbackCard({
                 <Activity size={18} className="text-white" />
               </div>
               <div>
-                <h2 className="text-lg font-bold text-stone-900">本次复盘 · 系统学到了这些</h2>
-                <p className="text-xs text-stone-400">基于你的复盘内容更新了画像</p>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-lg font-bold text-stone-900">本次复盘 · 系统学到了这些</h2>
+                  {showCount > 0 && (
+                    <span className="px-1.5 py-0.5 bg-amber-50 border border-amber-200 rounded-full text-[10px] font-bold text-amber-600">
+                      第{showCount + 1}次展示
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-stone-400">基于你的复盘内容更新了画像 · 行为标签需确认后才写入</p>
               </div>
             </div>
 
@@ -350,53 +380,92 @@ export default function LearningFeedbackCard({
 
               {/* 判断质量 */}
               {data && (
-                <section className={cn('rounded-2xl border p-4 space-y-4', levelConf.bg, levelConf.border)}>
+                <section className={cn(
+                  'rounded-2xl border p-4 space-y-4',
+                  data.isHardToTell
+                    ? 'bg-stone-50 border-stone-200'
+                    : cn(levelConf.bg, levelConf.border)
+                )}>
                   <div className="flex items-center gap-2">
                     <BarChart3 size={14} className="text-stone-400" />
                     <h3 className="text-xs font-bold text-stone-400 uppercase tracking-widest">判断质量</h3>
                   </div>
 
-                  {/* 主指标行 */}
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-3xl font-bold font-mono text-stone-900">
-                        {data.judgmentQualityPercent}%
-                      </span>
-                      {data.judgmentQualityDelta !== 0 && (
-                        <span className={cn(
-                          'text-sm font-semibold',
-                          data.judgmentQualityDelta > 0 ? 'text-emerald-600' : 'text-red-600'
-                        )}>
-                          {data.judgmentQualityDelta > 0 ? '+' : ''}{data.judgmentQualityDelta}%
-                        </span>
-                      )}
-                      {/* Level dot */}
-                      <span className={cn('w-2.5 h-2.5 rounded-full inline-block', levelConf.dot)} />
-                    </div>
-                    <TrendBadge trend={data.judgmentTrend} />
-                  </div>
+                  {data.isHardToTell ? (
+                    /* 难以区分：显示说明文字 + breakdown，不展示百分比 */
+                    <>
+                      <div className="flex items-start gap-2 py-1">
+                        <span className="text-3xl font-bold font-mono text-stone-300">—</span>
+                        <div className="space-y-1">
+                          <p className="text-sm font-semibold text-stone-500">本次选择了「难以区分」</p>
+                          <p className="text-xs text-stone-400 leading-relaxed">
+                            本次复盘暂不计入判断质量统计，保持复盘习惯，数据积累后将纳入分析
+                          </p>
+                        </div>
+                      </div>
 
-                  {/* 评价文字 */}
-                  <div className={cn('text-xs px-3 py-2 rounded-lg', levelConf.bg)}>
-                    <span className="font-semibold">{levelConf.label}</span>
-                  </div>
+                      {/* 构成分析 */}
+                      <div className="space-y-2.5 pt-1 border-t border-stone-200/60">
+                        <div className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">构成分析</div>
+                        {(() => {
+                          const b = data.judgmentBreakdown;
+                          return (
+                            <JudgmentBar label="难以区分" value={b.hardToTell} maxValue={100} color="bg-stone-300" />
+                          );
+                        })()}
+                      </div>
+                    </>
+                  ) : (
+                    /* 正常情况：展示百分比 + delta + breakdown */
+                    <>
+                      {/* 主指标行 */}
+                      <div className="flex items-baseline justify-between">
+                        <div className="flex items-baseline gap-2">
+                          <span className="text-3xl font-bold font-mono text-stone-900">
+                            {data.judgmentQualityPercent}%
+                          </span>
+                          {data.judgmentQualityDelta !== 0 && !data.judgmentTrend.insufficient && (
+                            <span className={cn(
+                              'text-sm font-semibold',
+                              data.judgmentQualityDelta > 0 ? 'text-emerald-600' : 'text-red-600'
+                            )}>
+                              {data.judgmentQualityDelta > 0 ? '+' : ''}{data.judgmentQualityDelta}%
+                            </span>
+                          )}
+                          {/* Level dot */}
+                          <span className={cn('w-2.5 h-2.5 rounded-full inline-block', levelConf.dot)} />
+                        </div>
+                        {!data.judgmentTrend.insufficient && <TrendBadge trend={data.judgmentTrend} />}
+                        {data.judgmentTrend.insufficient && (
+                          <span className="text-xs text-stone-400 italic">数据积累中</span>
+                        )}
+                      </div>
 
-                  {/* 构成分析 */}
-                  <div className="space-y-2.5 pt-1 border-t border-stone-100/60">
-                    <div className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">构成分析</div>
-                    {(() => {
-                      const b = data.judgmentBreakdown;
-                      const max = Math.max(b.mainlyJudgment, b.partialJudgment, b.mainlyLuck, b.hardToTell);
-                      return (
-                        <>
-                          <JudgmentBar label="主要来自判断" value={b.mainlyJudgment} maxValue={max} color="bg-blue-500" />
-                          <JudgmentBar label="部分判断+运气" value={b.partialJudgment} maxValue={max} color="bg-amber-400" />
-                          <JudgmentBar label="主要来自运气" value={b.mainlyLuck} maxValue={max} color="bg-red-400" />
-                          <JudgmentBar label="难以区分" value={b.hardToTell} maxValue={max} color="bg-stone-300" />
-                        </>
-                      );
-                    })()}
-                  </div>
+                      {/* 评价文字 */}
+                      <div className={cn('text-xs px-3 py-2 rounded-lg', levelConf.bg)}>
+                        <span className="font-semibold">{levelConf.label}</span>
+                      </div>
+
+                      {/* 构成分析 */}
+                      <div className="space-y-2.5 pt-1 border-t border-stone-100/60">
+                        <div className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">
+                          构成分析{data.judgmentTrend.insufficient ? ' · 初始记录' : ''}
+                        </div>
+                        {(() => {
+                          const b = data.judgmentBreakdown;
+                          const max = Math.max(b.mainlyJudgment, b.partialJudgment, b.mainlyLuck, b.hardToTell);
+                          return (
+                            <>
+                              <JudgmentBar label="主要来自判断" value={b.mainlyJudgment} maxValue={max} color="bg-blue-500" />
+                              <JudgmentBar label="部分判断+运气" value={b.partialJudgment} maxValue={max} color="bg-amber-400" />
+                              <JudgmentBar label="主要来自运气" value={b.mainlyLuck} maxValue={max} color="bg-red-400" />
+                              <JudgmentBar label="难以区分" value={b.hardToTell} maxValue={max} color="bg-stone-300" />
+                            </>
+                          );
+                        })()}
+                      </div>
+                    </>
+                  )}
                 </section>
               )}
 
@@ -434,31 +503,63 @@ export default function LearningFeedbackCard({
             </div>
 
             {/* Footer */}
-            <div className="px-6 pb-6 pt-4 flex gap-3 border-t border-stone-100 safe-bottom">
-              <button
-                onClick={onDismiss}
-                disabled={loading}
-                className="flex-1 py-3.5 bg-stone-100 text-stone-600 rounded-2xl font-bold text-sm hover:bg-stone-200 transition-colors disabled:opacity-40"
-              >
-                忽略
-              </button>
-              <button
-                onClick={onConfirm}
-                disabled={loading}
-                className="flex-[2] py-3.5 bg-ink text-white rounded-2xl font-bold text-sm hover:bg-stone-800 transition-colors disabled:opacity-40 flex items-center justify-center gap-2 active:scale-[0.98]"
-              >
-                {loading ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                    保存中...
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle2 size={16} />
-                    确认
-                  </>
-                )}
-              </button>
+            <div className="px-6 pb-6 pt-4 space-y-3 border-t border-stone-100 safe-bottom">
+              {/* Three buttons */}
+              <div className="flex gap-2">
+                {/* Dismiss — 永久跳过，不再出现 */}
+                <button
+                  onClick={onDismiss}
+                  disabled={loading}
+                  className="px-3 py-3 bg-stone-100 text-stone-500 rounded-2xl font-bold text-xs hover:bg-stone-200 transition-colors disabled:opacity-40 flex items-center gap-1.5"
+                  title="本次跳过，不会再出现"
+                >
+                  <X size={13} />
+                  忽略
+                </button>
+
+                {/* Later — 下次复盘再提醒 */}
+                <button
+                  onClick={onLater}
+                  disabled={loading}
+                  className="px-3 py-3 bg-amber-50 text-amber-700 rounded-2xl font-bold text-xs hover:bg-amber-100 transition-colors disabled:opacity-40 flex items-center gap-1.5 flex-1 justify-center"
+                  title={showCount >= 2 ? '已展示过多次，下次不一定再出现' : '下次复盘时再提醒'}
+                >
+                  <Clock size={13} />
+                  稍后
+                  {showCount > 0 && (
+                    <span className="text-[10px] text-amber-400 font-mono">({showCount}/3)</span>
+                  )}
+                </button>
+
+                {/* Confirm — 确认写入 */}
+                <button
+                  onClick={onConfirm}
+                  disabled={loading}
+                  className="flex-[2] py-3 bg-ink text-white rounded-2xl font-bold text-sm hover:bg-stone-800 transition-colors disabled:opacity-40 flex items-center justify-center gap-2 active:scale-[0.98]"
+                >
+                  {loading ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                      保存中...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 size={16} />
+                      确认
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {/* Hint text */}
+              <p className="text-center text-[10px] text-stone-400 leading-relaxed">
+                <span className="font-semibold text-stone-500">忽略</span>
+                {' '}跳过本次，不更新画像 ·
+                <span className="font-semibold text-amber-600">稍后</span>
+                {' '}下次复盘时再提醒（最多3次） ·
+                <span className="font-semibold text-stone-700">确认</span>
+                {' '}写入画像
+              </p>
             </div>
           </motion.div>
         </>

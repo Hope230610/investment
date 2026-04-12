@@ -19,51 +19,22 @@ class TokenData(BaseModel):
     user_id: Optional[int] = None
 
 
-def _get_or_create_debug_user(db: Session) -> User:
-    """Return the seeded debug user, creating it when needed."""
-    test_user = db.query(User).filter(User.username == "testuser").first()
-    if test_user:
-        return test_user
-
-    from src.models.user import ExperienceLevel, HoldingHorizon, RiskTolerance
-
-    test_user = User(username="testuser", email="test@example.com")
-    test_user.set_password("testpassword123")
-    db.add(test_user)
-    db.commit()
-    db.refresh(test_user)
-
-    test_profile = UserProfile(
-        user_id=test_user.id,
-        experience_level=ExperienceLevel.NOVICE,
-        holding_horizon=HoldingHorizon.MEDIUM,
-        risk_tolerance=RiskTolerance.MEDIUM,
-        behavior_tags=[],
-    )
-    db.add(test_profile)
-    db.commit()
-    return test_user
-
-
 def get_current_user(
     db: Session = Depends(get_db),
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
 ) -> User:
-    """Return the authenticated user, or the seeded dev user in debug mode."""
+    """Return the authenticated user. 所有受保护业务访问必须走正式认证，无任何 debug fallback。"""
     settings = get_settings()
-    if settings.DEBUG and (not credentials or not credentials.credentials):
-        return _get_or_create_debug_user(db)
-
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Unable to validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
 
-    try:
-        if not credentials:
-            raise credentials_exception
+    if not credentials:
+        raise credentials_exception
 
+    try:
         payload = jwt.decode(
             credentials.credentials,
             settings.SECRET_KEY,

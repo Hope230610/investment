@@ -1,4 +1,5 @@
 from sqlalchemy import Column, Integer, String, Text, Enum, JSON, ForeignKey, DateTime, Boolean
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from src.db.session import Base
 from src.models.base import TimestampMixin
@@ -24,8 +25,11 @@ class OutputMarkType(enum.Enum):
     UNCERTAINTY = "uncertainty"
 
 class Analysis(TimestampMixin, Base):
-    """分析记录模型"""
-    __tablename__ = "analyses"
+    """分析记录模型（旧表，已重命名为 analyses_legacy）
+
+    Phase 3 完成后不再用于新记录；现有查询在 ANALYSIS_ROUTING["analysis"] == "old" 时继续工作。
+    """
+    __tablename__ = "analyses_legacy"
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     # Foreign keys
@@ -54,14 +58,15 @@ class Analysis(TimestampMixin, Base):
     user = relationship("User", back_populates="analyses")
     stock = relationship("Stock", back_populates="analyses")
     reasons = relationship("AnalysisReason", back_populates="analysis", cascade="all, delete-orphan")
-    review_tasks = relationship("ReviewTask", back_populates="analysis")
+    # review_tasks 已迁移到 analysis_tasks（见 migration 005），旧 relationship 移除
+    # reviews = relationship("ReviewTask", back_populates="analysis")  # 已移除
 
 class AnalysisReason(TimestampMixin, Base):
-    """分析理由模型"""
-    __tablename__ = "analysis_reasons"
+    """分析理由模型（旧表，已重命名为 analysis_reasons_legacy）"""
+    __tablename__ = "analysis_reasons_legacy"
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    analysis_id = Column(Integer, ForeignKey("analyses.id"), index=True, nullable=False)
+    analysis_id = Column(Integer, ForeignKey("analyses_legacy.id"), index=True, nullable=False)
     text = Column(Text, nullable=False)
     order = Column(Integer, default=0, nullable=False)
     mark_type = Column(Enum(OutputMarkType), nullable=False)
@@ -75,12 +80,20 @@ class ReviewTaskStatus(enum.Enum):
     EXPIRED = "expired"
 
 class ReviewTask(TimestampMixin, Base):
-    """复盘任务模型"""
+    """复盘任务模型
+
+    双轨期：旧路径（analysis_id，Integer）| 新路径（analysis_task_id，UUID）。
+    迁移 005 完成后新建记录使用 analysis_task_id，
+    旧路径存量 review_tasks 的 analysis_id 保留（供查询兼容）。
+    """
     __tablename__ = "review_tasks"
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
-    analysis_id = Column(Integer, ForeignKey("analyses.id"), index=True, nullable=False)
+    # 旧路径（analyses.id，迁移 005 后新建时不再使用）
+    analysis_id = Column(Integer, nullable=True)
+    # 新路径（analysis_tasks.id，UUID）
+    analysis_task_id = Column(UUID(as_uuid=True), ForeignKey("analysis_tasks.id"), nullable=True, index=True)
     stock_name = Column(String(100), nullable=False)
     scenario = Column(String(50), nullable=False)
     review_at = Column(DateTime, nullable=False)
@@ -89,4 +102,5 @@ class ReviewTask(TimestampMixin, Base):
     review_result = Column(JSON, nullable=True)
     # Relationships
     user = relationship("User", back_populates="reviews")
-    analysis = relationship("Analysis", back_populates="review_tasks")
+    # 新路径关联 analysis_tasks
+    task = relationship("AnalysisTask", foreign_keys=[analysis_task_id], back_populates="review_tasks")

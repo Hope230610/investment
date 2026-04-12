@@ -62,7 +62,7 @@ export default function PreTradeInput() {
     setError(null);
 
     try {
-      const data = await apiPost<{ id: number }>('/api/v1/analysis', {
+      const data = await apiPost<{ id: string }>('/api/v1/analysis', {
         scenario: 'pre_trade_check',
         stock_id: stockId,
         scenario_payload: {

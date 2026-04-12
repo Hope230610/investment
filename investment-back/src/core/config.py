@@ -1,8 +1,25 @@
 from functools import lru_cache
 from typing import Optional
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+# 已知的不安全默认值，生产环境禁止使用
+_UNSAFE_DEFAULTS = {
+    "SECRET_KEY": {
+        "your-secret-key-here-change-in-production",
+        "changeme",
+        "secret",
+        "test-secret",
+    },
+    "AI_API_KEY": {
+        "a37cc339-b87a-45a1-bd09-035010baf1ef",
+        "sk-test",
+        "sk-placeholder",
+        "",
+    },
+}
 
 
 class Settings(BaseSettings):
@@ -13,7 +30,8 @@ class Settings(BaseSettings):
     # App
     APP_NAME: str = "AI投资决策助手"
     APP_VERSION: str = "1.0.0"
-    DEBUG: bool = True
+    DEBUG: bool = False
+    ENVIRONMENT: str = "production"  # development | production
     API_PREFIX: str = "/api/v1"
 
     # Database
@@ -35,8 +53,8 @@ class Settings(BaseSettings):
 
     # AI
     AI_API_KEY: Optional[str] = "a37cc339-b87a-45a1-bd09-035010baf1ef"
-    AI_MODEL: str = "deepseek-r1-250528"
-    AI_API_BASE_URL: str = "https://ark.cn-beijing.volces.com/api/v3"
+    AI_MODEL: str = "glm-4-7-251222"
+    AI_API_BASE_URL: str = "https://ark.cn-beijing.volces.com/api/v3/chat/completions"
     AI_API_TIMEOUT: int = 30
 
     # Market data
@@ -59,6 +77,42 @@ class Settings(BaseSettings):
             if normalized in {"0", "false", "no", "off", "release", "prod", "production"}:
                 return False
         return value
+
+    @model_validator(mode="after")
+    def validate_production_config(self):
+        """生产与真实内测环境禁止默认安全配置和 debug 能力，硬失败。"""
+        is_production = (
+            self.ENVIRONMENT.lower() in ("production", "prod", "staging")
+            or not self.DEBUG
+        )
+        if not is_production:
+            return self
+
+        violations: list[str] = []
+
+        unsafe_secret = _UNSAFE_DEFAULTS["SECRET_KEY"]
+        if self.SECRET_KEY.lower() in {v.lower() for v in unsafe_secret}:
+            violations.append(
+                f"SECRET_KEY has default/placeholder value '{self.SECRET_KEY}' — "
+                "must be set explicitly in production"
+            )
+
+        unsafe_ai = _UNSAFE_DEFAULTS["AI_API_KEY"]
+        if (self.AI_API_KEY or "").strip().lower() in {v.lower() for v in unsafe_ai}:
+            violations.append(
+                f"AI_API_KEY has default/placeholder value — "
+                "must be set explicitly in production"
+            )
+
+        if violations:
+            joined = "; ".join(violations)
+            raise ValueError(
+                f"[PRODUCTION CONFIG VIOLATION] {joined}. "
+                "Application refuses to start in production with insecure defaults. "
+                "Set explicit values via environment variables or .env file."
+            )
+
+        return self
 
 
 @lru_cache()

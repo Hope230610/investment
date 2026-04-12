@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
+import uuid as uuid_lib
 
 import structlog
 from sqlalchemy.orm import Session
@@ -7,10 +8,38 @@ from sqlalchemy.orm import Session
 from src.models.analysis import Analysis as AnalysisModel
 from src.models.analysis import AnalysisReason, AnalysisStatus
 from src.models.stock import Stock as StockModel
-from src.schemas.analysis import AnalysisCreate, AnalysisResult, AnalysisUpdate
+from src.schemas.analysis import AnalysisCreate, AnalysisUpdate, AnalysisResult
 
 
 logger = structlog.get_logger()
+
+# 表路由清单：控制 API 走新表还是旧表
+# beta 阶段：全量切换到新表
+ANALYSIS_ROUTING = {"analysis": "new"}
+
+
+def _is_valid_uuid(value: str) -> bool:
+    """判断字符串是否为合法 UUID"""
+    try:
+        uuid_lib.UUID(value)
+        return True
+    except (ValueError, AttributeError):
+        return False
+
+
+def _parse_analysis_id(analysis_id: str) -> tuple[str, Optional[int]]:
+    """解析 analysis_id：返回 (id_type, id_value)
+
+    迁移期兼容：同时接受 UUID 和 Integer。
+    返回 (uuid, None) 表示 UUID 格式，(int_str, int_value) 表示 Integer 格式。
+    """
+    if _is_valid_uuid(analysis_id):
+        return ("uuid", None)
+    try:
+        int_val = int(analysis_id)
+        return ("int", int_val)
+    except (ValueError, TypeError):
+        return ("unknown", None)
 
 
 class AnalysisService:
@@ -20,9 +49,18 @@ class AnalysisService:
         self.db = db
         self.logger = logger.bind(service="analysis")
 
-    def create_analysis(self, user_id: int, analysis_data: AnalysisCreate) -> AnalysisModel:
-        self.logger.info("creating_analysis", user_id=user_id)
+    def create_analysis(
+        self, user_id: int, analysis_data: AnalysisCreate
+    ) -> Union[AnalysisModel, Any]:
+        """创建分析任务记录。
 
+        根据 ANALYSIS_ROUTING["analysis"] 决定写入新表还是旧表：
+        - "new": 写入 analysis_tasks（新路径），返回 AnalysisTask
+        - "old": 写入 analyses（旧路径），返回 Analysis（旧路径兼容）
+        """
+        self.logger.info("creating_analysis", user_id=user_id, routing=ANALYSIS_ROUTING["analysis"])
+
+        # 确保 stock 记录存在
         stock = self.db.query(StockModel).filter(
             StockModel.stock_id == analysis_data.stock_id
         ).first()
@@ -36,6 +74,12 @@ class AnalysisService:
             self.db.add(stock)
             self.db.commit()
 
+        if ANALYSIS_ROUTING.get("analysis") == "new":
+            return self._create_analysis_task(user_id, analysis_data)
+        return self._create_analysis_legacy(user_id, analysis_data)
+
+    def _create_analysis_legacy(self, user_id: int, analysis_data: AnalysisCreate) -> AnalysisModel:
+        """旧路径：写入 analyses_legacy 表"""
         analysis = AnalysisModel(
             user_id=user_id,
             stock_id=analysis_data.stock_id,
@@ -46,9 +90,27 @@ class AnalysisService:
         self.db.add(analysis)
         self.db.commit()
         self.db.refresh(analysis)
-
         self.logger.debug("analysis_created", analysis_id=analysis.id)
         return analysis
+
+    def _create_analysis_task(self, user_id: int, analysis_data: AnalysisCreate) -> Any:
+        """新路径：写入 analysis_tasks 表"""
+        from src.models.analysis_task import AnalysisTask, AnalysisScenarioEnum, AnalysisStatusEnum
+        task = AnalysisTask(
+            id=uuid_lib.uuid4(),
+            user_id=user_id,
+            stock_id=analysis_data.stock_id,
+            scenario=AnalysisScenarioEnum(analysis_data.scenario.value),
+            status=AnalysisStatusEnum.PROCESSING,
+            scenario_payload=analysis_data.scenario_payload,
+            started_at=datetime.utcnow(),
+            expired_at=datetime.utcnow() + timedelta(days=7),
+        )
+        self.db.add(task)
+        self.db.commit()
+        self.db.refresh(task)
+        self.logger.debug("analysis_task_created", task_id=str(task.id))
+        return task
 
     def update_analysis(
         self, analysis_id: int, user_id: int, update_data: AnalysisUpdate

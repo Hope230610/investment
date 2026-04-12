@@ -12,7 +12,7 @@ export type AnalysisScenario =
   | 'pre_trade_check'
   | 'post_trade_review';
 
-export type AnalysisStatus = 'processing' | 'ready' | 'expired' | 'failed';
+export type AnalysisStatus = 'processing' | 'partial_ready' | 'ready' | 'expired' | 'failed';
 export type ReviewTaskStatus = 'pending' | 'completed' | 'expired';
 export type OutputMarkType = 'data_fact' | 'model_inference' | 'uncertainty';
 
@@ -21,9 +21,6 @@ export interface UserProfile {
   holding_horizon: HoldingHorizon;
   risk_tolerance: RiskTolerance;
   behavior_tags: BehaviorTag[];
-  investment_goals?: string | null;
-  portfolio_size?: string | null;
-  preferred_sectors?: string[] | null;
 }
 
 export interface AuthUser {
@@ -109,7 +106,7 @@ export interface StockDetail extends StockSearchItem {
 
 export interface ReasonPoint {
   text: string;
-  tag: OutputMarkType;
+  mark_type: OutputMarkType;
 }
 
 export interface UserFitSummary {
@@ -132,6 +129,16 @@ export interface DecisionCard {
   data_sources: string[];
 }
 
+/** 六段式决策卡 V2（无附加行情数据，行情数据在顶层） */
+export interface DecisionCardV2 {
+  headline_judgement: string;
+  key_reason_summary: Array<{ text: string; mark_type: OutputMarkType }>;
+  user_fit_summary: { fit: string; unfit: string };
+  next_step_actions: string[];
+  primary_risks: string;
+  review_at: string;
+}
+
 export interface BehaviorIntervention {
   behavior_type: string;
   severity: 'low' | 'medium' | 'high';
@@ -141,7 +148,7 @@ export interface BehaviorIntervention {
 export interface MarketContext {
   market_event: string;
   impact_boundary: string;
-  tag: OutputMarkType;
+  mark_type: OutputMarkType;
 }
 
 export interface ExplanationLayer {
@@ -174,7 +181,7 @@ export interface ReviewTask {
 }
 
 export interface AnalysisRecord {
-  id: number;
+  id: string;
   scenario: AnalysisScenario;
   stock_id: string;
   stock_name?: string | null;
@@ -183,27 +190,34 @@ export interface AnalysisRecord {
   headline?: string | null;
 }
 
+/**
+ * 分析详情 V2（对应 GetAnalysisResponseV2）
+ * stock_snapshot / company_profile / recent_events / data_sources 提至顶层
+ */
 export interface AnalysisDetail {
-  id: number;
+  analysis_id: string;
   user_id: number;
   stock_id: string;
-  stock_name?: string | null;
-  stock_market?: string | null;
-  stock_industry?: string | null;
-  scenario: AnalysisScenario;
+  scenario: string;
   status: AnalysisStatus;
-  headline?: string | null;
-  decision_card?: DecisionCard | null;
+  degrade_flags: string[];
+  decision_card: DecisionCardV2;
   fit_summary?: string | null;
   market_context?: MarketContext | null;
   explanation_layer?: ExplanationLayer | null;
   intervention?: BehaviorIntervention | null;
-  review_at?: string | null;
+  review_task?: { id: number; review_at: string; status: string } | null;
+  // 行情数据（从实时接口获取，提至顶层）
+  stock_snapshot?: StockQuoteSnapshot | null;
+  company_profile?: StockCompanyProfile | null;
+  recent_events: StockEvent[];
+  data_sources: string[];
   valid_until?: string | null;
-  created_at: string;
-  updated_at: string;
-  reasons: AnalysisReason[];
-  review_tasks: ReviewTask[];
+  data_as_of?: string | null;
+  // 股票基本信息（从 StockDetail 获取）
+  stock_name?: string | null;
+  stock_market?: string | null;
+  stock_industry?: string | null;
 }
 
 export interface WatchlistItem {
@@ -222,4 +236,110 @@ export interface FocusReason {
   stock_id: string;
   reason: string;
   created_at: string;
+}
+
+// ============================================================
+// 新数据模型类型（Phase 1~3 迁移后启用）
+// ============================================================
+
+/** 用户画像快照（分析任务创建时留存） */
+export interface UserProfileSnapshot {
+  experience_level: ExperienceLevel;
+  holding_horizon: HoldingHorizon;
+  risk_tolerance: RiskTolerance;
+  behavior_tags: BehaviorTag[];
+}
+
+/** 分析任务（UUID 主键，Phase 1 起使用） */
+export interface AnalysisTask {
+  id: string;
+  user_id: number;
+  stock_id: string;
+  created_at: string;
+  updated_at: string;
+  scenario: AnalysisScenario;
+  status: AnalysisStatus;
+  user_profile_snapshot: UserProfileSnapshot | null;
+  scenario_payload: Record<string, unknown> | null;
+  started_at: string | null;
+  completed_at: string | null;
+  expired_at: string;
+  error_message: string | null;
+}
+
+/** 分析结果（六段式决策卡，Phase 1 起使用） */
+export interface ReasonPointV2 {
+  text: string;
+  mark_type: OutputMarkType;
+}
+
+export interface DetailPanels {
+  facts: string[];
+  inferences: string[];
+  uncertainties: string[];
+}
+
+export interface AnalysisResult {
+  id: string;
+  analysis_task_id: string;
+  created_at: string;
+  headline_judgement: string;
+  key_reason_summary: ReasonPointV2[];
+  user_fit_summary: UserFitSummary;
+  next_step_actions: string[];
+  primary_risks: string;
+  review_at: string;
+  intervention: BehaviorIntervention | null;
+  fit_summary: string | null;
+  market_context: MarketContext | null;
+  explanation_layer: ExplanationLayer | null;
+  detail_panels: DetailPanels | null;
+  output_tags: OutputMarkType[];
+  valid_period: 'short' | 'medium' | 'long';
+}
+
+/** 行为干预记录（独立表，Phase 1 起使用） */
+export interface BehaviorInterventionRecord {
+  id: string;
+  user_id: number;
+  analysis_task_id: string | null;
+  created_at: string;
+  behavior_type: 'chasing_rise' | 'panic_sell' | 'frequent_trading';
+  severity: 'low' | 'medium' | 'high';
+  cooldown_started_at: string | null;
+  cooldown_ended_at: string | null;
+  cooldown_questions: string[] | null;
+  user_acknowledged: boolean;
+  user_notes: string | null;
+  action_taken: 'continued' | 'delayed' | 'cancelled' | 'logged_only' | null;
+}
+
+/** 合并后的观察列表（Phase 3，移除 focus_reasons 分离） */
+export interface WatchlistItemV2 {
+  id: string;
+  user_id: number;
+  stock_id: string;
+  created_at: string;
+  focus_reason: string | null;
+  added_from_scenario: string | null;
+}
+
+/** 用户操作埋点（Phase 1 起使用） */
+export type UserActionType =
+  | 'scenario_selected'
+  | 'analysis_submitted'
+  | 'behavior_intervention_shown'
+  | 'cooldown_started'
+  | 'review_task_completed';
+
+export interface UserAction {
+  id: string;
+  user_id: number;
+  created_at: string;
+  action_type: UserActionType;
+  action_payload: Record<string, unknown> | null;
+  stock_id: string | null;
+  analysis_task_id: string | null;
+  page_path: string | null;
+  user_agent: string | null;
 }

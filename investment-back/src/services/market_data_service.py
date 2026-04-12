@@ -166,7 +166,7 @@ class MarketDataService:
                 "腾讯历史K线",
                 "东方财富搜索",
                 "东方财富个股页",
-                "东方财富公告",
+                "巨潮资讯公告",
             ],
         )
         return detail
@@ -301,52 +301,138 @@ class MarketDataService:
         if cached is not None:
             return cached
 
-        end_time = datetime.now(CN_TZ)
-        begin_time = end_time - timedelta(days=self.settings.STOCK_NOTICE_LOOKBACK_DAYS)
         events: list[StockEvent] = []
 
-        for page_index in range(1, 6):
-            payload = self._request_json(
-                self.NOTICE_URL,
-                params={
-                    "sr": "-1",
-                    "page_size": "100",
-                    "page_index": str(page_index),
-                    "ann_type": "A",
-                    "client_source": "web",
-                    "f_node": "0",
-                    "s_node": "0",
-                    "begin_time": begin_time.strftime("%Y-%m-%d"),
-                    "end_time": end_time.strftime("%Y-%m-%d"),
-                },
-            )
-            rows = ((payload or {}).get("data") or {}).get("list") or []
-            if not rows:
-                break
+        # Step 1: 通过 cninfo 搜索 API 查找该股票的 orgId
+        orgid = self._lookup_cninfo_orgid(stock_code)
+        if not orgid:
+            self.logger.warning("cninfo_orgid_not_found", stock_code=stock_code)
+            self.cache.set(cache_key, events, self.settings.STOCK_DATA_CACHE_SECONDS)
+            return events
 
-            for row in rows:
-                codes = row.get("codes") or []
-                matched = any((code_item or {}).get("stock_code") == stock_code for code_item in codes)
-                if not matched:
-                    continue
-                columns = row.get("columns") or []
-                event_type = columns[0].get("column_name") if columns else None
-                url = f"https://data.eastmoney.com/notices/detail/{stock_code}/{row.get('art_code')}.html"
-                events.append(
-                    StockEvent(
-                        title=str(row.get("title") or stock_name),
-                        event_type=event_type,
-                        published_at=self._parse_notice_datetime(row.get("notice_date")),
-                        url=url,
-                        source="eastmoney_notice",
-                    )
+        # Step 2: 向 cninfo 公告 API 发 POST 请求（cninfo 不支持 GET）
+        end_time = datetime.now(CN_TZ)
+        begin_time = end_time - timedelta(days=self.settings.STOCK_NOTICE_LOOKBACK_DAYS)
+
+        # cninfo 需要自己的请求头（Referer 必须指向 cninfo.com.cn）
+        cninfo_headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/123.0.0.0 Safari/537.36"
+            ),
+            "Referer": "https://www.cninfo.com.cn/",
+            "Accept": "application/json, text/javascript, */*; q=0.01",
+            "Accept-Language": "zh-CN,zh;q=0.9",
+        }
+        cninfo_client = httpx.Client(timeout=self.settings.STOCK_DATA_TIMEOUT)
+
+        try:
+            form_data = {
+                "pageNum": "1",
+                "pageSize": str(limit),
+                "tabName": "fulltext",
+                "stock": f"{stock_code},{orgid}",
+                "searchkey": "",
+                "secid": "",
+                "category": "",
+                "trade": "",
+                "column": "sse",
+                "dbclick": "2",
+                "isHLtitle": "true",
+                "beginTime": begin_time.strftime("%Y-%m-%d"),
+                "endTime": end_time.strftime("%Y-%m-%d"),
+            }
+            response = cninfo_client.post(
+                "https://www.cninfo.com.cn/new/hisAnnouncement/query",
+                headers=cninfo_headers,
+                data=form_data,
+            )
+            response.raise_for_status()
+            payload = response.json()
+
+        except httpx.HTTPError as exc:
+            self.logger.warning("cninfo_request_failed", stock_code=stock_code, error=str(exc))
+            self.cache.set(cache_key, events, self.settings.STOCK_DATA_CACHE_SECONDS)
+            return events
+        finally:
+            cninfo_client.close()
+
+        # Step 3: 解析 announcements 列表（cninfo 将其放在响应顶层，非 result 字段）
+        announcements = payload.get("announcements") or []
+        for ann in announcements:
+            ts_ms = ann.get("announcementTime")
+            if ts_ms:
+                published_at = datetime.fromtimestamp(int(ts_ms) / 1000, CN_TZ)
+            else:
+                published_at = None
+
+            url_path = ann.get("adjunctUrl") or ""
+            full_url = f"https://www.cninfo.com.cn/{url_path}" if url_path else ""
+
+            events.append(
+                StockEvent(
+                    title=str(ann.get("announcementTitle") or stock_name),
+                    event_type=None,  # columnId 需额外映射，暂不填
+                    published_at=published_at,
+                    url=full_url,
+                    source="cninfo",
                 )
-                if len(events) >= limit:
-                    self.cache.set(cache_key, events, self.settings.STOCK_DATA_CACHE_SECONDS)
-                    return events
+            )
 
         self.cache.set(cache_key, events, self.settings.STOCK_DATA_CACHE_SECONDS)
         return events
+
+    def _lookup_cninfo_orgid(self, stock_code: str) -> Optional[str]:
+        """通过 cninfo 搜索 API 查找股票对应的 orgId。
+
+        cninfo 公告接口需要 stock={code},{orgId} 格式的精确参数，
+        无法像 East Money np-anotice-stock 那样做全量流式扫描，
+        因此必须先通过本方法获取 orgId。
+
+        注意：cninfo API 要求 Referer 指向 cninfo.com.cn，
+        与 MarketDataService 主 client 的 East Money Referer 冲突，
+        所以这里创建独立 client。
+        """
+        cninfo_headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/123.0.0.0 Safari/537.36"
+            ),
+            "Referer": "https://www.cninfo.com.cn/",
+            "Accept": "application/json, text/javascript, */*; q=0.01",
+            "Accept-Language": "zh-CN,zh;q=0.9",
+        }
+        cninfo_client = httpx.Client(timeout=self.settings.STOCK_DATA_TIMEOUT)
+        try:
+            response = cninfo_client.post(
+                "https://www.cninfo.com.cn/new/information/topSearch/query",
+                headers=cninfo_headers,
+                data={
+                    "pageNum": "1",
+                    "pageSize": "5",
+                    "keyWord": stock_code,
+                    "tradeName": "",
+                    "subType": "",
+                },
+            )
+            response.raise_for_status()
+            # cninfo 搜索返回的是列表，非 JSON object
+            results = response.json()
+            if not isinstance(results, list):
+                return None
+            # 精确匹配 code
+            code_normalized = stock_code.lstrip("0") or "0"
+            for item in results:
+                item_code = str(item.get("code") or "").lstrip("0") or "0"
+                if item_code == code_normalized:
+                    return item.get("orgId")
+            return None
+        except httpx.HTTPError:
+            return None
+        finally:
+            cninfo_client.close()
 
     def _request_json(self, url: str, params: dict[str, Any]) -> dict[str, Any]:
         response = self.client.get(url, params=params)

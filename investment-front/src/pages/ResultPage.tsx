@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 
-import { apiGet, apiPost } from '../api';
+import { apiGet, apiPost, getLearningHistory, postLearningFeedback } from '../api';
 import type { AnalysisDetail, OutputMarkType } from '../types';
 import { addFocusReason, addToWatchlist, cn, getWatchlist } from '../utils';
 import LearningFeedbackCard from '../components/LearningFeedbackCard';
@@ -122,23 +122,72 @@ export default function ResultPage() {
   const [showFeedback, setShowFeedback] = useState(false);
   const [feedbackData, setFeedbackData] = useState<LearningFeedbackData | null>(null);
   const [feedbackLoading, setFeedbackLoading] = useState(false);
+  const [feedbackShowCount, setFeedbackShowCount] = useState(0);
+  const [learningHistory, setLearningHistory] = useState<{
+    emotion_history: { date: string; level: number }[];
+    judgment_history: { date: string; score: number; label: string; is_hard_to_tell: boolean }[];
+  } | null>(null);
 
   // Retrieve review form data passed from PostTradeInput
   const reviewFormData = (location.state as { reviewFormData?: import('../utils/learningFeedback').ReviewFormData })?.reviewFormData;
+
+  // LocalStorage keys for feedback card tracking
+  const feedbackDismissKey = `feedback_dismissed_${id}`;
+  const feedbackCountKey = `feedback_showcount_${id}`;
+
+  // Check localStorage on mount — don't show if permanently dismissed
+  useEffect(() => {
+    if (!id) return;
+    const dismissed = localStorage.getItem(feedbackDismissKey);
+    if (dismissed === 'true') {
+      setShowFeedback(false);
+      return;
+    }
+    const count = parseInt(localStorage.getItem(feedbackCountKey) || '0', 10);
+    setFeedbackShowCount(count);
+    if (count >= 3) {
+      // Max shows reached, don't auto-show
+      setShowFeedback(false);
+    }
+  }, [id]);
+
+  // Fetch learning history (emotion + judgment) on mount for post_trade_review
+  useEffect(() => {
+    if (!id) return;
+    if (analysis?.scenario !== 'post_trade_review') return;
+
+    getLearningHistory(30)
+      .then(setLearningHistory)
+      .catch(() => {
+        // Silently fail — use empty history, UI still works with fallback
+        setLearningHistory({ emotion_history: [], judgment_history: [] });
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, analysis?.scenario]);
 
   // Compute feedback once analysis is loaded and this is a post_trade_review
   useEffect(() => {
     if (!analysis || analysis.status !== 'ready') return;
     if (analysis.scenario !== 'post_trade_review') return;
     if (!reviewFormData) return;
+    // Don't show if permanently dismissed or max shows reached
+    if (feedbackShowCount >= 3) return;
+    if (localStorage.getItem(feedbackDismissKey) === 'true') return;
 
     const scenarioPayload = analysis.decision_card
       ? { /* populated from scenario_payload in real impl */ }
       : null;
 
+    // Extract existing judgment scores from history (exclude is_hard_to_tell records)
+    const existingJudgmentHistory = (learningHistory?.judgment_history || [])
+      .filter(h => !h.is_hard_to_tell)
+      .map(h => h.score);
+
     const computed = computeLearningFeedback(
       reviewFormData,
       scenarioPayload,
+      existingJudgmentHistory,
+      learningHistory?.emotion_history,
     );
     if (computed) {
       setFeedbackData(computed);
@@ -146,19 +195,54 @@ export default function ResultPage() {
       const timer = window.setTimeout(() => setShowFeedback(true), 800);
       return () => clearTimeout(timer);
     }
-  }, [analysis, reviewFormData]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [analysis, reviewFormData, feedbackShowCount, learningHistory]);
 
   const handleFeedbackConfirm = async () => {
+    if (!feedbackData) return;
     setFeedbackLoading(true);
-    // TODO: POST to backend to persist tag updates and judgment history
-    // POST /api/v1/profile/learning-feedback
-    // { tagUpdates, judgmentQualityPercent, judgmentBreakdown }
-    await new Promise(resolve => setTimeout(resolve, 800)); // simulate async
-    setFeedbackLoading(false);
+    try {
+      await postLearningFeedback({
+        analysis_task_id: id ?? undefined,
+        tag_updates: feedbackData.tagUpdates.map(t => ({
+          tag: t.tag,
+          type: t.type,
+          source: t.source,
+        })),
+        judgment_quality: reviewFormData?.judgementQuality ?? '难以区分',
+        emotion_level: feedbackData.currentEmotionLevel,
+        intent: (analysis?.decision_card as Record<string, unknown>)?.intent as string | undefined,
+        trigger_reason: (analysis?.decision_card as Record<string, unknown>)?.trigger_reason as string | undefined,
+      });
+      if (id) {
+        localStorage.setItem(feedbackDismissKey, 'confirmed');
+      }
+    } catch {
+      // 即使 API 失败也关闭，不阻塞用户
+      if (id) {
+        localStorage.setItem(feedbackDismissKey, 'confirmed');
+      }
+    } finally {
+      setFeedbackLoading(false);
+      setShowFeedback(false);
+    }
+  };
+
+  const handleFeedbackLater = () => {
+    // Increment show count, close card
+    if (id) {
+      const newCount = feedbackShowCount + 1;
+      localStorage.setItem(feedbackCountKey, String(newCount));
+      setFeedbackShowCount(newCount);
+    }
     setShowFeedback(false);
   };
 
   const handleFeedbackDismiss = () => {
+    // Permanently dismiss this card for this analysis
+    if (id) {
+      localStorage.setItem(feedbackDismissKey, 'true');
+    }
     setShowFeedback(false);
   };
 
@@ -770,8 +854,10 @@ export default function ResultPage() {
         visible={showFeedback}
         data={feedbackData}
         onConfirm={handleFeedbackConfirm}
+        onLater={handleFeedbackLater}
         onDismiss={handleFeedbackDismiss}
         loading={feedbackLoading}
+        showCount={feedbackShowCount}
       />
 
       <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white/80 backdrop-blur-xl border-t border-stone-100 p-4 safe-bottom z-30">

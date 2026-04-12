@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel
 
@@ -26,7 +26,7 @@ class ReasonPoint(BaseModel):
 class MarketContext(BaseModel):
     market_event: str
     impact_boundary: str
-    tag: OutputMarkType = OutputMarkType.MODEL_INFERENCE
+    mark_type: OutputMarkType = OutputMarkType.MODEL_INFERENCE
 
 
 class ExplanationLayer(BaseModel):
@@ -36,7 +36,7 @@ class ExplanationLayer(BaseModel):
 
 class BehaviorIntervention(BaseModel):
     behavior_type: str
-    severity: str
+    severity: Literal["low", "medium", "high"]
     questions: List[str]
 
 
@@ -81,8 +81,20 @@ class ReviewTaskBase(BaseModel):
     status: ReviewTaskStatus = ReviewTaskStatus.PENDING
 
 
-class ReviewTaskCreate(ReviewTaskBase):
+class ReviewTaskCreate(BaseModel):
+    """旧路径创建用（Phase 1 迁移完成前保留）"""
     analysis_id: int
+    stock_name: str
+    scenario: str
+    review_at: datetime
+
+
+class ReviewTaskCreateV2(BaseModel):
+    """新路径创建用（Phase 3 及之后）"""
+    analysis_task_id: str
+    stock_name: str
+    scenario: str
+    review_at: datetime
 
 
 class ReviewTaskUpdate(BaseModel):
@@ -90,10 +102,22 @@ class ReviewTaskUpdate(BaseModel):
     review_result: Optional[Dict[str, Any]] = None
 
 
-class ReviewTask(ReviewTaskBase, TimestampMixin):
+class ReviewTask(TimestampMixin):
+    """复盘任务 schema（迁移后主键为 UUID，外键为 analysis_task_id）
+
+    旧路径兼容：analysis_id 为 Integer（来自 analyses 表）
+    新路径：analysis_task_id 为 UUID（来自 analysis_tasks 表）
+    两字段互斥，根据请求上下文填充其中一个。
+    """
     id: int
     user_id: int
-    analysis_id: int
+    analysis_task_id: Optional[str] = None  # 新路径 UUID
+    analysis_id: Optional[int] = None  # 旧路径 Integer（向后兼容）
+    stock_name: Optional[str] = None
+    stock_id: Optional[str] = None
+    scenario: str
+    review_at: datetime
+    status: ReviewTaskStatus
     review_result: Optional[Dict[str, Any]] = None
 
     class Config:
@@ -107,6 +131,12 @@ class AnalysisBase(BaseModel):
 
 class AnalysisCreate(AnalysisBase):
     stock_id: str
+
+
+class AnalysisCreateResponse(BaseModel):
+    """统一响应：无论新旧路径都返回 UUID 字符串 ID，便于前端直接导航。"""
+    id: str
+    status: str
 
 
 class AnalysisUpdate(BaseModel):
@@ -157,13 +187,63 @@ class AnalysisWithDetails(Analysis):
         from_attributes = True
 
 
+class DecisionCardV2(BaseModel):
+    """新路径（六段式决策卡）"""
+    headline_judgement: str
+    key_reason_summary: List[Dict[str, Any]]
+    user_fit_summary: Dict[str, str]
+    next_step_actions: List[str]
+    primary_risks: str
+    review_at: datetime
+
+
+class InterventionInfo(BaseModel):
+    """新路径行为干预信息"""
+    behavior_type: str
+    severity: Literal["low", "medium", "high"]
+    questions: List[str]
+    cooldown_minutes: Optional[int] = None
+
+
+class GetAnalysisResponseV2(BaseModel):
+    """新路径 get_analysis 完整响应（来自 analysis_tasks + analysis_results）"""
+    analysis_id: str
+    user_id: int
+    stock_id: str
+    scenario: str
+    status: str
+    degrade_flags: List[str] = []
+    intervention: Optional[InterventionInfo] = None
+    decision_card: DecisionCardV2
+    fit_summary: Optional[str] = None
+    market_context: Optional[Dict[str, Any]] = None
+    explanation_layer: Optional[Dict[str, Any]] = None
+    detail_panels: Optional[Dict[str, Any]] = None
+    review_task: Optional[Dict[str, Any]] = None  # {id, review_at, status}
+    # UI 展示层字段（从实时行情数据获取，不持久化）
+    stock_snapshot: Optional[StockQuoteSnapshot] = None
+    company_profile: Optional[StockCompanyProfile] = None
+    recent_events: List[StockEvent] = []
+    data_sources: List[str] = []
+    valid_until: Optional[datetime] = None
+    data_as_of: Optional[datetime] = None
+    # 股票基本信息（从 StockDetail 获取）
+    stock_name: Optional[str] = None
+    stock_market: Optional[str] = None
+    stock_industry: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
 class AnalysisRecord(BaseModel):
-    id: int
+    """分析历史记录（支持 UUID 和 Integer 两种 ID）"""
+    id: str  # 新路径为 UUID 字符串，旧路径为 Integer
     scenario: str
     stock_id: str
     stock_name: Optional[str] = None
     created_at: datetime
-    status: AnalysisStatus
+    status: str
     headline: Optional[str] = None
 
     class Config:

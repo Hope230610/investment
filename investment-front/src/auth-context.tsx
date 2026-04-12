@@ -15,8 +15,10 @@ interface AuthContextValue {
   isBootstrapping: boolean;
   token: string | null;
   user: AuthUser | null;
+  sessionError: string | null;
   login: (username: string, password: string) => Promise<void>;
   logout: () => void;
+  clearSessionError: () => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -25,6 +27,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setToken] = useState<string | null>(() => readAuthSession()?.accessToken ?? null);
   const [user, setUser] = useState<AuthUser | null>(() => readAuthSession()?.user ?? null);
   const [isBootstrapping, setIsBootstrapping] = useState(true);
+  const [sessionError, setSessionError] = useState<string | null>(null);
 
   useEffect(() => {
     const syncFromStorage = () => {
@@ -62,6 +65,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } catch (error) {
         if (!cancelled && error instanceof ApiError && error.status === 401) {
           clearAuthSession();
+          setSessionError('会话已过期，请重新登录');
         }
       } finally {
         if (!cancelled) {
@@ -83,6 +87,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isBootstrapping,
       token,
       user,
+      sessionError,
       async login(username: string, password: string) {
         const response = await apiPost<LoginResponse>(
           '/api/v1/user/login',
@@ -96,14 +101,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         });
         setToken(response.access_token);
         setUser(response.user);
+        setSessionError(null);
       },
       logout() {
         clearAuthSession();
         setToken(null);
         setUser(null);
+        setSessionError(null);
       },
+      clearSessionError: () => setSessionError(null),
     }),
-    [isBootstrapping, token, user],
+    [isBootstrapping, token, user, sessionError],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

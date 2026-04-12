@@ -38,17 +38,20 @@ function computeJudgmentLevel(pct: number): JudgmentQualityLevel {
 
 function computeJudgmentTrend(
   recentPcts: number[],
-): { direction: 'up' | 'down' | 'stable'; description: string } {
-  if (recentPcts.length < 2) return { direction: 'stable', description: '数据不足' };
+  count: number,
+): { direction: 'up' | 'down' | 'stable'; description: string; insufficient: boolean } {
+  if (count < 3) {
+    return { direction: 'stable', description: '数据积累中', insufficient: true };
+  }
   const recent = recentPcts.slice(-7); // last 7 entries
   const avg = recent.reduce((a, b) => a + b, 0) / recent.length;
   const prev = recentPcts.length > 7
     ? recentPcts.slice(-14, -7).reduce((a, b) => a + b, 0) / 7
     : avg;
   const delta = avg - prev;
-  if (delta >= 3) return { direction: 'up', description: '近7天持续提升' };
-  if (delta <= -3) return { direction: 'down', description: '近7天有所下滑' };
-  return { direction: 'stable', description: '近7天基本稳定' };
+  if (delta >= 3) return { direction: 'up', description: '近7天持续提升', insufficient: false };
+  if (delta <= -3) return { direction: 'down', description: '近7天有所下滑', insufficient: false };
+  return { direction: 'stable', description: '近7天基本稳定', insufficient: false };
 }
 
 function computeJudgmentSuggestion(level: JudgmentQualityLevel): string {
@@ -123,15 +126,19 @@ function inferTagUpdates(
 function buildEmotionHistory(
   currentLevel: number,
   _scenarioPayload: Record<string, unknown>,
-): EmotionDataPoint[] {
-  // TODO(backend): replace with real API call to emotion history endpoint
-  // For now, generate synthetic history for demo
-  const history: EmotionDataPoint[] = [];
+  realEmotionHistory?: { date: string; level: number }[],
+): { date: string; level: number }[] {
+  // 优先使用真实 API 数据（从 learningHistory 传入）
+  if (realEmotionHistory && realEmotionHistory.length > 0) {
+    return realEmotionHistory;
+  }
+  // Fallback: 合成数据（Phase 2 接入初期保留，API 失败时降级）
+  // TODO(backend): 生产验证后移除此 fallback
+  const history: { date: string; level: number }[] = [];
   const now = new Date();
   for (let i = 29; i >= 0; i--) {
     const d = new Date(now);
     d.setDate(d.getDate() - i);
-    // Synthetic: slight random variation around 2.4 mean
     const noise = (Math.sin(i * 0.7) * 0.8 + (Math.random() - 0.5) * 1.2);
     const level = Math.max(1, Math.min(5, Math.round(2.4 + noise)));
     history.push({
@@ -164,23 +171,29 @@ export function computeLearningFeedback(
   formData: ReviewFormData,
   scenarioPayload: Record<string, unknown> | null,
   existingJudgmentHistory: number[] = [], // past judgment quality percentages
+  emotionHistory?: { date: string; level: number }[], // 真实 API 数据
 ): LearningFeedbackData | null {
   const payload = scenarioPayload || {};
 
   const judgementScore = JUDGMENT_SCORE[formData.judgementQuality] ?? -1;
-  if (judgementScore < 0) return null;
 
-  // Blend with existing history
-  const recentHistory = [...existingJudgmentHistory, judgementScore];
-  const totalScore = recentHistory.reduce((s, v) => s + v, 0);
-  const count = recentHistory.length;
-  const qualityPercent = Math.round(totalScore / count);
-  const delta = existingJudgmentHistory.length > 0
+  // "难以区分"：不计入历史，不算百分比重写，但行为标签和情绪数据仍展示
+  const isHardToTell = formData.judgementQuality === '难以区分';
+
+  // 非"难以区分"选项且无历史时返回 null
+  if (!isHardToTell && judgementScore < 0 && existingJudgmentHistory.length === 0) return null;
+
+  // 聚合：排除"难以区分"后再算百分比
+  const validHistory = isHardToTell ? existingJudgmentHistory : [...existingJudgmentHistory, judgementScore];
+  const qualityPercent = validHistory.length > 0
+    ? Math.round(validHistory.reduce((s, v) => s + v, 0) / validHistory.length)
+    : 0;
+  const delta = existingJudgmentHistory.length > 0 && !isHardToTell
     ? qualityPercent - Math.round(existingJudgmentHistory.reduce((s, v) => s + v, 0) / existingJudgmentHistory.length)
     : 0;
 
   const breakdown = { ...JUDGMENT_BREAKDOWN_PCT };
-  if (formData.judgementQuality === '难以区分') {
+  if (isHardToTell) {
     breakdown['难以区分'] = 100;
     breakdown['主要来自判断'] = 0;
     breakdown['部分判断+运气'] = 0;
@@ -191,16 +204,19 @@ export function computeLearningFeedback(
     tagUpdates: inferTagUpdates(payload, formData.behaviorPatterns),
     judgmentQualityPercent: qualityPercent,
     judgmentQualityDelta: delta,
-    judgmentLevel: computeJudgmentLevel(qualityPercent),
+    judgmentLevel: isHardToTell ? 'medium' : computeJudgmentLevel(qualityPercent),
     judgmentBreakdown: {
       mainlyJudgment: breakdown['主要来自判断'],
       partialJudgment: breakdown['部分判断+运气'],
       mainlyLuck: breakdown['主要来自运气'],
       hardToTell: breakdown['难以区分'],
     },
-    judgmentTrend: computeJudgmentTrend(recentHistory),
-    suggestion: computeJudgmentSuggestion(computeJudgmentLevel(qualityPercent)),
-    emotionHistory: buildEmotionHistory(formData.emotionLevel, payload),
+    judgmentTrend: computeJudgmentTrend(validHistory, validHistory.length),
+    suggestion: isHardToTell
+      ? '判断质量待积累，继续保持复盘习惯'
+      : computeJudgmentSuggestion(computeJudgmentLevel(qualityPercent)),
+    emotionHistory: buildEmotionHistory(formData.emotionLevel, payload, emotionHistory),
     currentEmotionLevel: formData.emotionLevel,
+    isHardToTell,
   };
 }

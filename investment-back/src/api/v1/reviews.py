@@ -37,15 +37,11 @@ async def get_reviews(
         if task.status == ReviewTaskStatus.PENDING and task.review_at <= now:
             task.status = ReviewTaskStatus.EXPIRED
             has_updates = True
-        if task.analysis is not None:
-            setattr(task, "stock_id", task.analysis.stock_id)
 
     if has_updates:
         db.commit()
         for task in tasks:
             db.refresh(task)
-            if task.analysis is not None:
-                setattr(task, "stock_id", task.analysis.stock_id)
 
     logger.debug("review_tasks_count", count=len(tasks))
     return tasks
