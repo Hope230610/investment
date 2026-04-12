@@ -4,22 +4,22 @@
 
 ## 1. 定位
 
-`openspec/` 是本项目的规格治理层，用来管理两类内容：
+`openspec/` 是本项目的规格治理层，用于管理两类内容：
 
 - 顶层 baseline specs：描述“目标产品能力基线”
 - future changes：描述“对 baseline 的新增或修改”
 
-它不替代 `structure/`，而是和 `structure/` 形成双轨治理：
+它不替代 `structure/`，而是与 `structure/` 构成双轨治理：
 
 - `structure/` 负责长文基线，保存产品、架构、数据库、路线图、执行板等完整分析文档
-- `openspec/` 负责把这些长文基线压缩成可验证、可变更、可追踪的 baseline specs 和 change artifacts
+- `openspec/` 负责将这些长文基线收敛为可验证、可变更、可追踪的 baseline specs 和 change artifacts
 
-其中 baseline specs 在语义上分为两层：
+baseline specs 在语义上分为两层：
 
 - 业务稳定层 specs：描述长期成立的用户价值、业务边界和场景闭环
 - 共享协议与治理 specs：描述跨场景共用的访问边界、错误响应、状态口径、结果结构和安全底线
 
-实现方案、技术选型、代码路径、接口挂载方式、环境变量装配和迁移步骤不属于 baseline spec 主体，应优先放在 change 的 `design.md` 和 `tasks.md`。
+实现方案、技术选型、代码路径、接口挂载方式、环境变量装配和迁移步骤，不属于 baseline spec 的主体，应优先放在 change 的 `design.md` 和 `tasks.md` 中。
 
 ## 2. 目录约定
 
@@ -79,13 +79,13 @@ openspec/
 仅在以下情况直接修改 `openspec/specs/`：
 
 - 初始化基线能力
-- 通过 `openspec archive <change-id>` 把已完成 change 合并回主线
+- 通过 `openspec archive <change-id>` 把已完成的 change 合并回主线
 
 除这两种情况外，不直接编辑 baseline specs。
 
 ### 4.2 什么时候创建 change
 
-任何会改变 capability requirement 的工作，都必须先创建 change：
+任何会变更 capability requirement 的工作，都必须先创建 change：
 
 ```powershell
 openspec new change <change-id>
@@ -97,7 +97,7 @@ openspec new change <change-id>
 - `p1-watchlist-persistence`
 - `p2-test-release-gates`
 
-change workflow 固定为：
+change workflow 固定包含以下产物：
 
 1. `proposal.md`：为什么做、改什么、影响什么
 2. `specs/<capability>/spec.md`：新增或修改 requirements
@@ -115,7 +115,7 @@ change workflow 固定为：
 
 ## 5. Initial Change Backlog
 
-以下 backlog 用来把现有代码逐步收口到 baseline specs：
+以下 backlog 用于将现有代码逐步收口到 baseline specs：
 
 | Change ID | 目标 | 关联 capability |
 | --- | --- | --- |
@@ -126,7 +126,7 @@ change workflow 固定为：
 | `p1-review-loop-closed-loop` | 把结果回看、复盘任务和历史查询收成长期闭环 | `history-and-review-loop`、`post-trade-review` |
 | `p2-test-release-gates` | 建立关键回归、发布前门禁、验收清单映射 | `platform-contracts` |
 
-本轮已经附带创建 `p0-auth-production-hardening` 作为种子 change，用来验证 OpenSpec 工作流可用。
+本轮已经附带创建 `p0-auth-production-hardening` 作为种子 change，用于验证 OpenSpec 工作流可用。
 
 ## 6. 常用校验命令
 

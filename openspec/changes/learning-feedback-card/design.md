@@ -85,6 +85,14 @@ PostTradeInput.handleSubmit
   "难以区分"          → 排除（不计入）
 
 聚合: 百分比 = Σ分数 / 计入次数 × 100%
+
+下限兜底: 累计数据 < 3 次 → 显示"数据积累中"，不展示 delta / 趋势
+
+"难以区分"处理:
+  - 本次复盘不计入历史聚合（不污染百分比）
+  - 反馈卡正常展示（行为标签、情绪趋势仍有效）
+  - 判断质量区改为灰色中性样式，显示说明文字 + breakdown 100% "难以区分" 柱
+  - `isHardToTell: true` 标记本次为"难以区分"
 Delta: 与历史平均值差值
 Level: ≥80% 绿 | 60-80% 黄 | <60% 红
 
@@ -164,13 +172,13 @@ interface TagUpdate {
 
 ## Verified Implementation
 
-已在 `6ee2677` + `???` 提交，TypeScript 零错误，Vite build 零警告：
+已在 `6ee2677` + `0b379f9` + 本次提交，TypeScript 零错误，Vite build 零警告：
 
 ```
-investment-front/src/components/LearningFeedbackCard.tsx   +468 (+新三按钮)
+investment-front/src/components/LearningFeedbackCard.tsx   +468 (+新三按钮 + isHardToTell中性样式)
 investment-front/src/pages/PostTradeInput.tsx              +21
 investment-front/src/pages/ResultPage.tsx                   +119 (+localStorage追踪)
-investment-front/src/utils/learningFeedback.ts             +206
+investment-front/src/utils/learningFeedback.ts             +206 (+含50分 + 下限兜底 + 难以区分处理)
 ```
 
 关键验证点：
@@ -181,3 +189,7 @@ investment-front/src/utils/learningFeedback.ts             +206
 - [x] localStorage 在页面挂载时读取，防止重复展示
 - [x] 展示次数 ≥ 3 时自动停止自动弹出
 - [x] hint 文案解释三个按钮语义
+- [x] "难以区分"不 return null，反馈卡正常展示
+- [x] "难以区分"判断质量区显示灰色中性样式 + 说明文字 + breakdown 100% 柱
+- [x] "难以区分"不计入历史聚合，不污染百分比计算
+- [x] 数据 < 3 次时显示"数据积累中"，隐藏 delta / trend

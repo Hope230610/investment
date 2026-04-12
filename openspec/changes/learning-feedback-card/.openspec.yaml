@@ -1,3 +1,9 @@
 schema: spec-driven
 created: 2026-04-12
-status: in-progress
+status: in-review
+summary: |
+  画像学习闭环前端展示层 + Phase 2 后端接入 + Phase 3 用户可见化。
+  待执行 alembic upgrade head 后上线。
+phase_1: ✅ 已上线（commit 6ee2677, 0b379f9）
+phase_2: ✅ 已实现，待迁移（migration 008）
+phase_3: ✅ 已实现
