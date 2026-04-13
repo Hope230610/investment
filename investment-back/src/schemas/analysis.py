@@ -1,7 +1,8 @@
 from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional
+from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from src.models.analysis import (
     AnalysisStatus,
@@ -116,12 +117,19 @@ class ReviewTask(TimestampMixin):
     stock_name: Optional[str] = None
     stock_id: Optional[str] = None
     scenario: str
-    review_at: datetime
-    status: ReviewTaskStatus
+    review_at: Optional[datetime] = None
+    status: str  # 'pending' | 'completed' | 'expired'，DB 存字符串，避免枚举值大小写不匹配
     review_result: Optional[Dict[str, Any]] = None
 
     class Config:
         from_attributes = True
+
+    @field_validator("analysis_task_id", mode="before")
+    @classmethod
+    def _convert_analysis_task_id(cls, v):
+        if isinstance(v, UUID):
+            return str(v)
+        return v
 
 
 class AnalysisBase(BaseModel):

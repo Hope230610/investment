@@ -203,3 +203,21 @@ export async function postLearningFeedback(data: LearningFeedbackPayload) {
     data as unknown as Record<string, unknown>,
   );
 }
+
+/**
+ * 更新复盘任务的 review_result 并标记为已完成
+ * PATCH /api/v1/reviews/by-analysis/:analysis_task_id
+ */
+export async function patchReviewResult(
+  analysisTaskId: string,
+  reviewResult: Record<string, unknown>,
+) {
+  return apiRequest<unknown>(
+    `/api/v1/reviews/by-analysis/${analysisTaskId}`,
+    {
+      method: 'PATCH',
+      auth: true,
+      body: { review_result: reviewResult, mark_completed: true },
+    },
+  );
+}

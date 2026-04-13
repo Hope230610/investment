@@ -37,8 +37,9 @@ export default function ReviewsPage() {
     };
   }, []);
 
+  // 已完成 = 有 review_result 的记录（无论是"稍后"还是"确认"触发的）
   const pending = reviews.filter((task) => task.status === 'pending' || task.status === 'expired');
-  const completed = reviews.filter((task) => task.status === 'completed');
+  const completed = reviews.filter((task) => task.review_result != null);
 
   if (loading) return <div className="p-8 text-center text-stone-400">加载中...</div>;
 

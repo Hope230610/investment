@@ -96,6 +96,8 @@ class AnalysisService:
     def _create_analysis_task(self, user_id: int, analysis_data: AnalysisCreate) -> Any:
         """新路径：写入 analysis_tasks 表"""
         from src.models.analysis_task import AnalysisTask, AnalysisScenarioEnum, AnalysisStatusEnum
+        from src.models.analysis import ReviewTask as ReviewTaskModel, ReviewTaskStatus
+
         task = AnalysisTask(
             id=uuid_lib.uuid4(),
             user_id=user_id,
@@ -110,6 +112,29 @@ class AnalysisService:
         self.db.commit()
         self.db.refresh(task)
         self.logger.debug("analysis_task_created", task_id=str(task.id))
+
+        # 对于 post_trade_review，同步创建 ReviewTask，
+        # 让用户提交后能在复盘记录页立即看到这条记录（Fix 3）
+        if analysis_data.scenario.value == "post_trade_review":
+            stock_name = ""
+            stock = self.db.query(StockModel).filter(
+                StockModel.stock_id == analysis_data.stock_id
+            ).first()
+            if stock:
+                stock_name = stock.stock_name
+
+            review_task = ReviewTaskModel(
+                user_id=user_id,
+                analysis_task_id=task.id,
+                stock_name=stock_name or analysis_data.stock_id,
+                scenario="post_trade_review",
+                review_at=datetime.utcnow(),
+                status=ReviewTaskStatus.PENDING,
+            )
+            self.db.add(review_task)
+            self.db.commit()
+            self.logger.info("review_task_created_sync", task_id=str(task.id))
+
         return task
 
     def update_analysis(

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useLocation } from 'react-router-dom';
 import {
   AlertCircle,
@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 
-import { apiGet, apiPost, getLearningHistory, postLearningFeedback } from '../api';
+import { apiGet, apiPost, getLearningHistory, patchReviewResult, postLearningFeedback } from '../api';
 import type { AnalysisDetail, OutputMarkType } from '../types';
 import { addFocusReason, addToWatchlist, cn, getWatchlist } from '../utils';
 import LearningFeedbackCard from '../components/LearningFeedbackCard';
@@ -128,6 +128,14 @@ export default function ResultPage() {
     judgment_history: { date: string; score: number; label: string; is_hard_to_tell: boolean }[];
   } | null>(null);
 
+  /**
+   * Session-level flag: 防止"稍后"按钮点击后 effect 重新运行导致卡片又弹出。
+   * useEffect 依赖 feedbackShowCount 时，点击"稍后"会触发 effect 重跑，
+   * 在 timer 还未清除前就又设了新的 timer，导致卡片重新弹出。
+   * 使用 ref 跟踪本次会话内是否已经主动关闭过卡片。
+   */
+  const feedbackSessionDismissedRef = useRef(false);
+
   // Retrieve review form data passed from PostTradeInput
   const reviewFormData = (location.state as { reviewFormData?: import('../utils/learningFeedback').ReviewFormData })?.reviewFormData;
 
@@ -170,8 +178,10 @@ export default function ResultPage() {
     if (!analysis || analysis.status !== 'ready') return;
     if (analysis.scenario !== 'post_trade_review') return;
     if (!reviewFormData) return;
-    // Don't show if permanently dismissed or max shows reached
-    if (feedbackShowCount >= 3) return;
+    // Don't show if permanently dismissed, max shows reached, or session-dismissed
+    if (feedbackSessionDismissedRef.current) return;
+    const count = parseInt(localStorage.getItem(feedbackCountKey) || '0', 10);
+    if (count >= 3) return;
     if (localStorage.getItem(feedbackDismissKey) === 'true') return;
 
     const scenarioPayload = analysis.decision_card
@@ -196,14 +206,15 @@ export default function ResultPage() {
       return () => clearTimeout(timer);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [analysis, reviewFormData, feedbackShowCount, learningHistory]);
+  }, [analysis, reviewFormData, learningHistory]);
 
   const handleFeedbackConfirm = async () => {
-    if (!feedbackData) return;
+    if (!feedbackData || !id) return;
     setFeedbackLoading(true);
     try {
+      // 1. 写入 learning feedback（画像学习）
       await postLearningFeedback({
-        analysis_task_id: id ?? undefined,
+        analysis_task_id: id,
         tag_updates: feedbackData.tagUpdates.map(t => ({
           tag: t.tag,
           type: t.type,
@@ -214,32 +225,48 @@ export default function ResultPage() {
         intent: (analysis?.decision_card as Record<string, unknown>)?.intent as string | undefined,
         trigger_reason: (analysis?.decision_card as Record<string, unknown>)?.trigger_reason as string | undefined,
       });
-      if (id) {
-        localStorage.setItem(feedbackDismissKey, 'confirmed');
-      }
+
+      // 2. 更新 ReviewTask.review_result 并标记为已完成
+      await patchReviewResult(id, {
+        action_taken: reviewFormData?.actionTaken,
+        outcome_summary: reviewFormData?.outcomeSummary,
+        plan_deviation: reviewFormData?.planDeviation,
+        judgement_quality: reviewFormData?.judgementQuality,
+        behavior_patterns: reviewFormData?.behaviorPatterns,
+        emotion_level: feedbackData.currentEmotionLevel,
+      });
+
+      localStorage.setItem(feedbackDismissKey, 'confirmed');
     } catch {
       // 即使 API 失败也关闭，不阻塞用户
-      if (id) {
-        localStorage.setItem(feedbackDismissKey, 'confirmed');
-      }
+      localStorage.setItem(feedbackDismissKey, 'confirmed');
     } finally {
       setFeedbackLoading(false);
       setShowFeedback(false);
     }
   };
 
-  const handleFeedbackLater = () => {
-    // Increment show count, close card
+  const handleFeedbackLater = async () => {
+    // 设置 session flag，防止 effect 重跑导致卡片又弹出
+    feedbackSessionDismissedRef.current = true;
+    setShowFeedback(false);
+
+    // 将 ReviewTask 标记为已完成（用户已"稍后"处理，等于承认了这次复盘）
     if (id) {
-      const newCount = feedbackShowCount + 1;
+      try {
+        await patchReviewResult(id, { review_result: null, mark_completed: true });
+      } catch {
+        // 非阻塞，localStorage 标记仍生效
+      }
+      const newCount = parseInt(localStorage.getItem(feedbackCountKey) || '0', 10) + 1;
       localStorage.setItem(feedbackCountKey, String(newCount));
       setFeedbackShowCount(newCount);
     }
-    setShowFeedback(false);
   };
 
   const handleFeedbackDismiss = () => {
-    // Permanently dismiss this card for this analysis
+    // 设置 session flag + 永久跳过标记
+    feedbackSessionDismissedRef.current = true;
     if (id) {
       localStorage.setItem(feedbackDismissKey, 'true');
     }
