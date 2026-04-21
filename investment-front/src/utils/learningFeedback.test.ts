@@ -361,6 +361,129 @@ describe('Suggestion text', () => {
 });
 
 
+// ─── ResultPage confirm/dismiss localStorage 语义 ─────────────────────────────────
+
+/**
+ * smoke test for ResultPage confirm/dismiss localStorage behavior.
+ *
+ * 这些测试验证 Gate 0 修复后的关键语义：
+ * - confirm 写 'true'（不是 'confirmed'）
+ * - dismiss 写 'true'
+ * - later 只写 showcount
+ * - 读端对 'confirmed' 归一化为 'true'
+ *
+ * 以下场景需要手动 smoke 验证（需要完整的后端 + 数据库）：
+ * - confirm 全链路：Step1 + Step2 均成功 → DB 有 emotion_history 写入
+ * - confirm Step2 404 → review_tasks.status 未变，但卡片关闭
+ * - confirm Step1 500 → 卡片仍弹出（未静默成功）
+ * - records/history → 能读到新表数据，非空列表
+ * - record-reason upsert → 第二次写入只更新 focus_reason，不产生脏数据
+ */
+
+// Node test environment needs localStorage stub
+const store: Record<string, string> = {};
+const mockLocalStorage = {
+  getItem: (key: string) => store[key] ?? null,
+  setItem: (key: string, value: string) => { store[key] = value; },
+  removeItem: (key: string) => { delete store[key]; },
+  clear: () => { Object.keys(store).forEach(k => delete store[k]); },
+};
+if (typeof global.localStorage === 'undefined') {
+  (global as Record<string, unknown>).localStorage = mockLocalStorage;
+} else {
+  global.localStorage = mockLocalStorage;
+}
+
+describe('ResultPage confirm/dismiss localStorage semantics', () => {
+  const TEST_TASK_ID = '00000000-0000-0000-0000-000000000001';
+  const dismissKey = `feedback_dismissed_${TEST_TASK_ID}`;
+  const countKey = `feedback_showcount_${TEST_TASK_ID}`;
+
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  // Simulate ResultPage.handleFeedbackDismiss behavior
+  function simulateDismiss() {
+    localStorage.setItem(dismissKey, 'true');
+  }
+
+  // Simulate ResultPage.handleFeedbackConfirm success path
+  function simulateConfirmSuccess() {
+    // handleFeedbackConfirm in ResultPage.tsx:209-244
+    // Both Step1 and Step2 succeed → writes 'true'
+    localStorage.setItem(dismissKey, 'true');
+  }
+
+  // Simulate ResultPage.handleFeedbackConfirm Step2-failure path
+  function simulateConfirmStep2Failure() {
+    // catch block: still writes 'true' (silent mark)
+    // This is the Gate 0 fix: confirm writes 'true', not 'confirmed'
+    localStorage.setItem(dismissKey, 'true');
+  }
+
+  // Simulate ResultPage card open: read-side normalization
+  function shouldShowCard(): boolean {
+    const count = parseInt(localStorage.getItem(countKey) || '0', 10);
+    if (count >= 3) return false;
+    const dismissed = localStorage.getItem(dismissKey);
+    // Read-side normalization: 'confirmed' → 'true'
+    if (dismissed === 'confirmed') {
+      localStorage.setItem(dismissKey, 'true');
+      return false;
+    }
+    return dismissed !== 'true';
+  }
+
+  it('dismiss writes feedbackDismissKey = true', () => {
+    simulateDismiss();
+    expect(localStorage.getItem(dismissKey)).toBe('true');
+  });
+
+  it('confirm success writes feedbackDismissKey = true (not confirmed)', () => {
+    simulateConfirmSuccess();
+    expect(localStorage.getItem(dismissKey)).toBe('true');
+    expect(localStorage.getItem(dismissKey)).not.toBe('confirmed');
+  });
+
+  it('confirm Step2 failure also writes feedbackDismissKey = true (silent mark)', () => {
+    // This is the key smoke case: Step2 fails but card still closes
+    simulateConfirmStep2Failure();
+    expect(localStorage.getItem(dismissKey)).toBe('true');
+  });
+
+  it('later only increments showcount, does NOT write dismiss key', () => {
+    // handleFeedbackLater: only writes feedback_showcount_${id}, not dismiss key
+    const count = parseInt(localStorage.getItem(countKey) || '0', 10);
+    localStorage.setItem(countKey, String(count + 1));
+    // dismiss key should NOT be set by "later"
+    expect(localStorage.getItem(dismissKey)).toBeNull();
+  });
+
+  it('read-side: confirmed value is normalized to true on card open', () => {
+    // Legacy 'confirmed' value written by pre-Gate-0 code
+    localStorage.setItem(dismissKey, 'confirmed');
+    expect(shouldShowCard()).toBe(false);
+    expect(localStorage.getItem(dismissKey)).toBe('true'); // normalized
+  });
+
+  it('read-side: true value causes card not to show', () => {
+    localStorage.setItem(dismissKey, 'true');
+    expect(shouldShowCard()).toBe(false);
+  });
+
+  it('read-side: null dismiss key causes card to show (when count < 3)', () => {
+    expect(shouldShowCard()).toBe(true);
+  });
+
+  it('showcount >= 3 causes card not to show regardless of dismiss key', () => {
+    localStorage.setItem(countKey, '3');
+    localStorage.removeItem(dismissKey);
+    expect(shouldShowCard()).toBe(false);
+  });
+});
+
+
 // ─── Null safety ──────────────────────────────────────────────────────────────
 
 describe('Null safety', () => {

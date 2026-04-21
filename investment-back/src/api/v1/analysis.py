@@ -714,7 +714,6 @@ def _add_watchlist_from_new_path(
 ):
     """新表路径：将关注理由写入 watchlists 表（合并设计）"""
     import uuid as uuid_lib
-    from sqlalchemy.exc import IntegrityError
     from src.models.watchlist_v2 import Watchlist, AddedFromScenarioEnum
 
     uuid_val = uuid_lib.UUID(analysis_id)
@@ -737,6 +736,28 @@ def _add_watchlist_from_new_path(
     }
     added_from = scenario_map.get(scenario_str, None)
 
+    # 查找是否已存在（upsert 路径）
+    existing = db.query(Watchlist).filter(
+        Watchlist.user_id == user_id,
+        Watchlist.stock_id == reason_data.stock_id,
+    ).first()
+
+    if existing:
+        # 幂等更新：同用户同股票的第二次写入只更新 focus_reason
+        existing.focus_reason = reason_data.reason
+        existing.added_from_scenario = added_from
+        existing.source_analysis_id = uuid_val
+        db.commit()
+        db.refresh(existing)
+        return RecordReasonResponse(
+            id=str(existing.id),
+            user_id=int(existing.user_id),
+            stock_id=existing.stock_id,
+            focus_reason=existing.focus_reason or "",
+            created_at=existing.created_at,
+            updated_at=existing.updated_at,
+        )
+
     watchlist = Watchlist(
         user_id=user_id,
         stock_id=reason_data.stock_id,
@@ -746,11 +767,7 @@ def _add_watchlist_from_new_path(
         notify_on_events=True,
     )
     db.add(watchlist)
-    try:
-        db.commit()
-    except IntegrityError:
-        db.rollback()
-        return api_error(HTTP_409_CONFLICT, "ALREADY_IN_WATCHLIST", "该股票已在观察列表中", request)
+    db.commit()
     db.refresh(watchlist)
 
     return RecordReasonResponse(
