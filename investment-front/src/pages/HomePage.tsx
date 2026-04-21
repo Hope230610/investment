@@ -18,7 +18,7 @@ export default function HomePage() {
 
     const loadHomeData = async () => {
       const [recordsResult, reviewsResult, profileResult] = await Promise.allSettled([
-        apiGet<AnalysisRecord[]>('/api/v1/records'),
+        apiGet<AnalysisRecord[]>('/api/v1/analysis'),
         apiGet<ReviewTask[]>('/api/v1/reviews'),
         apiGet<UserProfile>('/api/v1/user/profile'),
       ]);

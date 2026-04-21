@@ -16,7 +16,7 @@ export default function RecordsPage() {
 
     const loadRecords = async () => {
       try {
-        const data = await apiGet<AnalysisRecord[]>('/api/v1/records');
+        const data = await apiGet<AnalysisRecord[]>('/api/v1/analysis');
         if (!cancelled) {
           setRecords(data);
         }

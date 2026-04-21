@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, Enum, JSON, ForeignKey, DateTime, Boolean
+from sqlalchemy import Column, Integer, String, Text, Enum, JSON, ForeignKey, DateTime
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from src.db.session import Base
@@ -94,6 +94,7 @@ class ReviewTask(TimestampMixin, Base):
     analysis_id = Column(Integer, nullable=True)
     # 新路径（analysis_tasks.id，UUID）
     analysis_task_id = Column(UUID(as_uuid=True), ForeignKey("analysis_tasks.id"), nullable=True, index=True)
+    stock_id = Column(String(20), nullable=True)  # 分析标的代码（从 analysis_tasks.stock_id 同步）
     stock_name = Column(String(100), nullable=False)
     scenario = Column(String(50), nullable=False)
     review_at = Column(DateTime, nullable=False)

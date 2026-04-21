@@ -171,6 +171,70 @@ describe('Tag inference', () => {
     );
   });
 
+  // ─── action_taken 回退（Fix 4c）────────────────────────────────────────────────
+
+  it('infers 追涨倾向 when only action_taken=buy (no intent field)', () => {
+    const result = computeLearningFeedback(
+      makeForm(),
+      { action_taken: 'buy', trigger_reason: '连续上涨' },
+      [50],
+    );
+    expect(result!.tagUpdates).toContainEqual(
+      expect.objectContaining({ tag: '追涨倾向', type: 'add' }),
+    );
+  });
+
+  it('infers 恐慌卖出 when only action_taken=sell (no intent field)', () => {
+    const result = computeLearningFeedback(
+      makeForm(),
+      { action_taken: 'sell', trigger_reason: '快速下跌' },
+      [50],
+    );
+    expect(result!.tagUpdates).toContainEqual(
+      expect.objectContaining({ tag: '恐慌卖出', type: 'add' }),
+    );
+  });
+
+  it('infers 追涨倾向 when action_taken=add (no intent field)', () => {
+    const result = computeLearningFeedback(
+      makeForm(),
+      { action_taken: 'add', trigger_reason: '看到大涨' },
+      [50],
+    );
+    expect(result!.tagUpdates).toContainEqual(
+      expect.objectContaining({ tag: '追涨倾向', type: 'add' }),
+    );
+  });
+
+  it('infers 恐慌卖出 when action_taken=reduce (no intent field)', () => {
+    const result = computeLearningFeedback(
+      makeForm(),
+      { action_taken: 'reduce', trigger_reason: '恐慌性抛盘' },
+      [50],
+    );
+    expect(result!.tagUpdates).toContainEqual(
+      expect.objectContaining({ tag: '恐慌卖出', type: 'add' }),
+    );
+  });
+
+  it('intent takes priority over action_taken when both present', () => {
+    const result = computeLearningFeedback(
+      makeForm(),
+      { intent: 'buy', action_taken: 'sell', trigger_reason: '连续上涨' },
+      [50],
+    );
+    expect(result!.tagUpdates.map(u => u.tag)).toContain('追涨倾向');
+  });
+
+  it('returns no tags when neither intent nor action_taken matches trigger', () => {
+    const result = computeLearningFeedback(
+      makeForm(),
+      { action_taken: 'hold', trigger_reason: '观望' },
+      [50],
+    );
+    expect(result!.tagUpdates).toHaveLength(0);
+  });
+
   it('adds user-confirmed patterns from behaviorPatterns array', () => {
     const result = computeLearningFeedback(
       makeForm({ behaviorPatterns: ['追涨倾向', '频繁交易'] }),

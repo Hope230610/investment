@@ -3,7 +3,7 @@
 对应 Phase 2 后端接入。
 """
 from datetime import date as date_type, datetime
-from typing import List, Optional
+from typing import Any, List, Optional
 from uuid import UUID
 
 from sqlalchemy import and_
@@ -11,7 +11,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 from src.models.emotion_history import EmotionHistory
 from src.models.judgment_history import JudgmentHistory
-from src.models.user import UserProfile
+from src.models.user import BehaviorTag, UserProfile
 from src.schemas.learning_feedback import (
     JudgmentHistoryPoint,
     LearningFeedbackRequest,
@@ -29,6 +29,13 @@ JUDGMENT_SCORE_MAP = {
     "部分判断 + 部分运气": 50,
     "主要来自运气": 0,
     # "难以区分" 单独处理，不写 judgment_score
+}
+
+BEHAVIOR_TAG_LABEL_MAP = {
+    "追涨倾向": BehaviorTag.CHASING_RISE.value,
+    "恐慌卖出": BehaviorTag.PANIC_SELL.value,
+    "频繁交易": BehaviorTag.FREQUENT_TRADING.value,
+    "纪律稳定": BehaviorTag.STABLE_DISCIPLINE.value,
 }
 
 
@@ -60,7 +67,7 @@ class ProfileService:
             trigger_reason=trigger_reason,
         )
         stmt = stmt.on_conflict_do_update(
-            constraint="ix_emotion_history_user_date",
+            index_elements=["user_id", "recorded_date"],
             set_={
                 "emotion_level": emotion_level,
                 "analysis_task_id": analysis_task_id,
@@ -128,7 +135,7 @@ class ProfileService:
             analysis_task_id=analysis_task_id,
         )
         stmt = stmt.on_conflict_do_update(
-            constraint="ix_judgment_history_user_date",
+            index_elements=["user_id", "judgment_date"],
             set_={
                 "judgment_score": score,
                 "judgment_label": judgment_label,
@@ -239,7 +246,7 @@ class ProfileService:
         )
 
     def _merge_behavior_tags(
-        self, user_id: int, tag_updates: List[dict]
+        self, user_id: int, tag_updates: List[Any]
     ) -> int:
         """合并行为标签到 UserProfile.behavior_tags
 
@@ -257,8 +264,17 @@ class ProfileService:
         updated = 0
 
         for update in tag_updates:
-            tag_name = update.get("tag", "")
-            action = update.get("type", "add")
+            if hasattr(update, "tag"):
+                raw_tag_name = getattr(update, "tag", "")
+                action = getattr(update, "type", "add")
+            else:
+                raw_tag_name = update.get("tag", "")
+                action = update.get("type", "add")
+
+            tag_name = self._normalize_behavior_tag(raw_tag_name)
+            if not tag_name:
+                self.logger.debug("skip_unknown_behavior_tag", raw_tag_name=raw_tag_name)
+                continue
 
             if action == "add":
                 if tag_name not in tags:
@@ -273,3 +289,15 @@ class ProfileService:
         profile.behavior_tags = tags
         self.db.commit()
         return updated
+
+    def _normalize_behavior_tag(self, tag_name: str) -> Optional[str]:
+        """Map frontend-facing labels to canonical backend tag values."""
+        if not tag_name:
+            return None
+
+        normalized = tag_name.strip()
+        valid_values = {tag.value for tag in BehaviorTag}
+        if normalized in valid_values:
+            return normalized
+
+        return BEHAVIOR_TAG_LABEL_MAP.get(normalized)

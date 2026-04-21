@@ -6,7 +6,14 @@ from .analysis import (
     AnalysisReason, ReviewTask, DecisionCard,
     OutputMarkType
 )
-from .watchlist import WatchlistItem, WatchlistItemCreate, FocusReason, FocusReasonCreate
+from .watchlist import (
+    WatchlistItem,
+    WatchlistItemCreate,
+    FocusReason,
+    FocusReasonCreate,
+    RecordReasonRequest,
+    RecordReasonResponse,
+)
 from .common import Message
 
 __all__ = [
@@ -18,5 +25,6 @@ __all__ = [
     "OutputMarkType",
     "WatchlistItem", "WatchlistItemCreate",
     "FocusReason", "FocusReasonCreate",
+    "RecordReasonRequest", "RecordReasonResponse",
     "Message"
 ]

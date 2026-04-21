@@ -33,7 +33,7 @@ from src.schemas.analysis import (
     ReviewTaskCreateV2,
 )
 from src.schemas.stock import StockDetail
-from src.schemas.watchlist import FocusReason, FocusReasonCreate
+from src.schemas.watchlist import FocusReason, FocusReasonCreate, RecordReasonRequest, RecordReasonResponse
 from src.services.adaptation_service import AdaptationService
 from src.services.analysis_generation_service import AnalysisGenerationService
 from src.services.analysis_service import (
@@ -390,11 +390,13 @@ def process_analysis_v2(task_uuid_str: str):
                 review_task = ReviewTaskModel(
                     user_id=task.user_id,
                     analysis_task_id=task.id,
+                    stock_id=task.stock_id,
                     stock_name=stock.stock_name,
                     scenario=scenario_str,
                     review_at=review_at,
                 )
                 db.add(review_task)
+            review_task.stock_id = task.stock_id
             review_task.stock_name = stock.stock_name
             review_task.scenario = scenario_str
             review_task.review_at = review_at
@@ -567,6 +569,7 @@ def _get_analysis_from_new_tables(
         stock_name=stock_name,
         stock_market=stock_market,
         stock_industry=stock_industry,
+        scenario_payload=task.scenario_payload,
     )
 
 
@@ -650,10 +653,10 @@ def _get_analysis_records_from_new_tables(
     return records
 
 
-@router.post("/{analysis_id}/record-reason", response_model=FocusReason)
+@router.post("/{analysis_id}/record-reason", response_model=RecordReasonResponse)
 async def record_focus_reason(
     analysis_id: str,
-    reason_data: FocusReasonCreate,
+    reason_data: RecordReasonRequest,
     request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -695,11 +698,18 @@ async def record_focus_reason(
     db.add(focus_reason)
     db.commit()
     db.refresh(focus_reason)
-    return focus_reason
+    return RecordReasonResponse(
+        id=str(focus_reason.id),
+        user_id=focus_reason.user_id,
+        stock_id=focus_reason.stock_id,
+        focus_reason=focus_reason.reason or "",
+        created_at=focus_reason.created_at,
+        updated_at=focus_reason.updated_at,
+    )
 
 
 def _add_watchlist_from_new_path(
-    db: Session, user_id: int, analysis_id: str, reason_data: FocusReasonCreate,
+    db: Session, user_id: int, analysis_id: str, reason_data: RecordReasonRequest,
     request: Optional[Request] = None,
 ):
     """新表路径：将关注理由写入 watchlists 表（合并设计）"""
@@ -718,15 +728,17 @@ def _add_watchlist_from_new_path(
     if not task:
         return api_error(HTTP_404_NOT_FOUND, "ANALYSIS_NOT_FOUND", "分析未找到", request)
 
+    # 枚举按 .value 落库（PG enum 实际存小写字符串）
+    scenario_str = task.scenario.value if hasattr(task.scenario, "value") else task.scenario
     scenario_map = {
         "single_stock_check": AddedFromScenarioEnum.SINGLE_STOCK_CHECK,
         "pre_trade_check": AddedFromScenarioEnum.PRE_TRADE_CHECK,
         "post_trade_review": AddedFromScenarioEnum.POST_TRADE_REVIEW,
     }
-    added_from = scenario_map.get(task.scenario.value, None)
+    added_from = scenario_map.get(scenario_str, None)
 
     watchlist = Watchlist(
-        user_id=str(user_id),
+        user_id=user_id,
         stock_id=reason_data.stock_id,
         focus_reason=reason_data.reason,
         added_from_scenario=added_from,
@@ -741,13 +753,11 @@ def _add_watchlist_from_new_path(
         return api_error(HTTP_409_CONFLICT, "ALREADY_IN_WATCHLIST", "该股票已在观察列表中", request)
     db.refresh(watchlist)
 
-    # 映射回 FocusReason schema 兼容格式
-    return FocusReason(
-        id=watchlist.id,
+    return RecordReasonResponse(
+        id=str(watchlist.id),
         user_id=int(user_id),
-        analysis_id=0,  # 旧 schema 字段占位
         stock_id=watchlist.stock_id,
-        reason=watchlist.focus_reason or "",
+        focus_reason=watchlist.focus_reason or "",
         created_at=watchlist.created_at,
         updated_at=watchlist.updated_at,
     )

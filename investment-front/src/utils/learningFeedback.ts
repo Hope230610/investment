@@ -30,6 +30,17 @@ const JUDGMENT_BREAKDOWN_PCT = {
   '难以区分': 5,
 };
 
+function normalizeIntent(value?: string | null): 'buy' | 'sell' | 'add' | 'reduce' | undefined {
+  const normalized = value?.trim().toLowerCase();
+  if (!normalized) return undefined;
+  if (normalized === 'add_position') return 'add';
+  if (normalized === 'reduce_position') return 'reduce';
+  if (normalized === 'buy' || normalized === 'sell' || normalized === 'add' || normalized === 'reduce') {
+    return normalized;
+  }
+  return undefined;
+}
+
 function computeJudgmentLevel(pct: number): JudgmentQualityLevel {
   if (pct >= 80) return 'high';
   if (pct >= 60) return 'medium';
@@ -68,13 +79,16 @@ function inferTagUpdates(
   behaviorPatterns: string[],
 ): TagUpdate[] {
   const updates: TagUpdate[] = [];
-  const intent = scenarioPayload?.intent as string | undefined;
+  const actionTaken = scenarioPayload?.action_taken as string | undefined;
+  const intent = normalizeIntent(
+    (scenarioPayload?.intent as string | undefined) || actionTaken,
+  );
   const trigger = scenarioPayload?.trigger_reason as string | undefined;
   const patterns = behaviorPatterns || [];
 
   // System-detected: chasing
   if (
-    (intent === 'buy' || intent === 'add_position') &&
+    (intent === 'buy' || intent === 'add') &&
     (trigger === '连续上涨' || trigger === '看到大涨')
   ) {
     updates.push({
@@ -86,7 +100,7 @@ function inferTagUpdates(
 
   // System-detected: panic sell
   if (
-    (intent === 'sell' || intent === 'reduce_position') &&
+    (intent === 'sell' || intent === 'reduce') &&
     (trigger === '快速下跌' || trigger === '恐慌性抛盘')
   ) {
     updates.push({
@@ -196,7 +210,7 @@ export function computeLearningFeedback(
   if (isHardToTell) {
     breakdown['难以区分'] = 100;
     breakdown['主要来自判断'] = 0;
-    breakdown['部分判断+运气'] = 0;
+    breakdown['部分判断 + 部分运气'] = 0;
     breakdown['主要来自运气'] = 0;
   }
 
@@ -207,7 +221,7 @@ export function computeLearningFeedback(
     judgmentLevel: isHardToTell ? 'medium' : computeJudgmentLevel(qualityPercent),
     judgmentBreakdown: {
       mainlyJudgment: breakdown['主要来自判断'],
-      partialJudgment: breakdown['部分判断+运气'],
+      partialJudgment: breakdown['部分判断 + 部分运气'],
       mainlyLuck: breakdown['主要来自运气'],
       hardToTell: breakdown['难以区分'],
     },

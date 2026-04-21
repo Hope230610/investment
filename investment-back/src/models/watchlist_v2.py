@@ -39,9 +39,13 @@ class Watchlist(TimestampMixin, Base):
     # 关注理由（从原 focus_reasons 合并）
     focus_reason = Column(Text, nullable=True)
 
-    # 来源信息
+    # 来源信息（values_callable 确保按 .value 落库，而非枚举名）
     added_from_scenario = Column(
-        Enum(AddedFromScenarioEnum),
+        Enum(
+            AddedFromScenarioEnum,
+            name="addedfromscenarioenum",
+            values_callable=lambda cls: [e.value for e in cls],
+        ),
         nullable=True,
     )
     source_analysis_id = Column(UUID(as_uuid=True), nullable=True)

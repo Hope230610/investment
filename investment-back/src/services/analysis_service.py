@@ -126,6 +126,7 @@ class AnalysisService:
             review_task = ReviewTaskModel(
                 user_id=user_id,
                 analysis_task_id=task.id,
+                stock_id=analysis_data.stock_id,
                 stock_name=stock_name or analysis_data.stock_id,
                 scenario="post_trade_review",
                 review_at=datetime.utcnow(),

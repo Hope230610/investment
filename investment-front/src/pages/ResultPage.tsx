@@ -183,10 +183,13 @@ export default function ResultPage() {
     const count = parseInt(localStorage.getItem(feedbackCountKey) || '0', 10);
     if (count >= 3) return;
     if (localStorage.getItem(feedbackDismissKey) === 'true') return;
+    // Normalize legacy 'confirmed' value to 'true' for consistent gate semantics
+    if (localStorage.getItem(feedbackDismissKey) === 'confirmed') {
+      localStorage.setItem(feedbackDismissKey, 'true');
+      return;
+    }
 
-    const scenarioPayload = analysis.decision_card
-      ? { /* populated from scenario_payload in real impl */ }
-      : null;
+    const scenarioPayload = analysis.scenario_payload ?? null;
 
     // Extract existing judgment scores from history (exclude is_hard_to_tell records)
     const existingJudgmentHistory = (learningHistory?.judgment_history || [])
@@ -222,8 +225,8 @@ export default function ResultPage() {
         })),
         judgment_quality: reviewFormData?.judgementQuality ?? '难以区分',
         emotion_level: feedbackData.currentEmotionLevel,
-        intent: (analysis?.decision_card as Record<string, unknown>)?.intent as string | undefined,
-        trigger_reason: (analysis?.decision_card as Record<string, unknown>)?.trigger_reason as string | undefined,
+        intent: analysis?.scenario_payload?.intent as string | undefined,
+        trigger_reason: analysis?.scenario_payload?.trigger_reason as string | undefined,
       });
 
       // 2. 更新 ReviewTask.review_result 并标记为已完成
@@ -236,10 +239,10 @@ export default function ResultPage() {
         emotion_level: feedbackData.currentEmotionLevel,
       });
 
-      localStorage.setItem(feedbackDismissKey, 'confirmed');
+      localStorage.setItem(feedbackDismissKey, 'true');
     } catch {
       // 即使 API 失败也关闭，不阻塞用户
-      localStorage.setItem(feedbackDismissKey, 'confirmed');
+      localStorage.setItem(feedbackDismissKey, 'true');
     } finally {
       setFeedbackLoading(false);
       setShowFeedback(false);
@@ -347,13 +350,13 @@ export default function ResultPage() {
     setSavingReason(true);
 
     try {
-      await apiPost(`/api/v1/analysis/${id}/record-reason`, {
+      const result = await apiPost<{ id: string }>(`/api/v1/analysis/${id}/record-reason`, {
         stock_id: analysis.stock_id,
         reason: focusReason.trim(),
       });
 
       addFocusReason({
-        analysis_id: id,
+        analysis_id: result.id,
         stock_id: analysis.stock_id,
         reason: focusReason.trim(),
       });

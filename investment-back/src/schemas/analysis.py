@@ -239,6 +239,8 @@ class GetAnalysisResponseV2(BaseModel):
     stock_name: Optional[str] = None
     stock_market: Optional[str] = None
     stock_industry: Optional[str] = None
+    # 场景透传（intent / trigger_reason / emotion_level，用于标签推断）
+    scenario_payload: Optional[Dict[str, Any]] = None
 
     class Config:
         from_attributes = True

@@ -169,7 +169,8 @@ export interface AnalysisReason {
 export interface ReviewTask {
   id: number;
   user_id: number;
-  analysis_id: number;
+  analysis_task_id?: string;  // 新路径 UUID
+  analysis_id?: number;        // 旧路径 Integer（向后兼容）
   stock_id?: string | null;
   stock_name: string;
   scenario: AnalysisScenario;
@@ -218,6 +219,8 @@ export interface AnalysisDetail {
   stock_name?: string | null;
   stock_market?: string | null;
   stock_industry?: string | null;
+  // 场景透传（intent / trigger_reason / emotion_level 等，用于标签推断）
+  scenario_payload?: Record<string, unknown> | null;
 }
 
 export interface WatchlistItem {

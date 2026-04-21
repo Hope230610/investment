@@ -367,8 +367,13 @@ class MarketDataService:
             else:
                 published_at = None
 
-            url_path = ann.get("adjunctUrl") or ""
-            full_url = f"https://www.cninfo.com.cn/{url_path}" if url_path else ""
+            ann_id = ann.get("announcementId")
+            # 新版巨潮以 announcementId 构造披露页 URL，不再依赖 adjunctUrl（旧版路径已下线）
+            full_url = (
+                f"https://www.cninfo.com.cn/new/disclosure/announcement/{ann_id}"
+                if ann_id
+                else ""
+            )
 
             events.append(
                 StockEvent(
