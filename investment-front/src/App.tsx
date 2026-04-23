@@ -3,12 +3,14 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, Navigate, useLocation } from 'react-router-dom';
 import { Home, LayoutGrid, History, User, ChevronLeft, Star } from 'lucide-react';
 
 import { AuthProvider, RequireAuth } from './auth-context';
-import { cn } from './utils';
+import { cn, computeUnfinishedReviews } from './utils';
+import { apiGet } from './api';
+import type { ReviewTask } from './types';
 
 import HomePage from './pages/HomePage';
 import LoginPage from './pages/LoginPage';
@@ -28,6 +30,30 @@ function AppShell({ children }: { children: React.ReactNode }) {
   const isResultPage = location.pathname.includes('/result');
   const isInputPage = location.pathname.includes('/analysis/') && !isResultPage;
   const isLoginPage = location.pathname === '/login';
+
+  const [unfinishedReviews, setUnfinishedReviews] = useState<ReviewTask[]>([]);
+
+  const MAIN_NAV_PATHS = ['/', '/watchlist', '/reviews', '/records', '/me'];
+
+  const fetchUnfinishedReviews = () => {
+    apiGet<ReviewTask[]>('/api/v1/reviews')
+      .then((data) => setUnfinishedReviews(computeUnfinishedReviews(data)))
+      .catch(() => setUnfinishedReviews([]));
+  };
+
+  // Refresh when returning to any main nav page (e.g. after completing a review)
+  useEffect(() => {
+    if (MAIN_NAV_PATHS.some((p) => location.pathname === p)) {
+      fetchUnfinishedReviews();
+    }
+  }, [location.pathname]);
+
+  // Refresh when window regains focus (covers tab-switch scenario)
+  useEffect(() => {
+    const onFocus = () => fetchUnfinishedReviews();
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, []);
 
   const navItems = [
     { path: '/', label: '首页', icon: Home },
@@ -62,17 +88,32 @@ function AppShell({ children }: { children: React.ReactNode }) {
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = location.pathname === item.path;
+            const isReviews = item.path === '/reviews';
+            const count = isReviews ? unfinishedReviews.length : 0;
+            const hasExpired = isReviews && unfinishedReviews.some((t) => t.status === 'expired');
 
             return (
               <Link
                 key={item.path}
                 to={item.path}
                 className={cn(
-                  'flex flex-col items-center gap-1 transition-colors',
+                  'relative flex flex-col items-center gap-1 transition-colors',
                   isActive ? 'text-ink' : 'text-stone-400 hover:text-stone-600',
                 )}
               >
-                <Icon size={20} strokeWidth={isActive ? 2.5 : 2} />
+                <div className="relative">
+                  <Icon size={20} strokeWidth={isActive ? 2.5 : 2} />
+                  {count > 0 && (
+                    <span
+                      className={cn(
+                        'absolute -top-1.5 -right-2 min-w-[16px] h-4 flex items-center justify-center rounded-full text-[9px] font-bold text-white px-1',
+                        hasExpired ? 'bg-red-500' : 'bg-amber-500',
+                      )}
+                    >
+                      {count > 99 ? '99+' : count}
+                    </span>
+                  )}
+                </div>
                 <span className="text-[10px] font-medium">{item.label}</span>
               </Link>
             );

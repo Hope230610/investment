@@ -1,30 +1,55 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { AlertCircle, Calendar, ChevronRight, Search, Trash2 } from 'lucide-react';
+import { AlertCircle, Calendar, CheckCircle2, ChevronRight, Search, Trash2 } from 'lucide-react';
 
-import type { WatchlistItem } from '../types';
-import { getWatchlist, removeFromWatchlist } from '../utils';
+import type { WatchlistApiItem } from '../types';
+import { deleteWatchlistItem, getWatchlistItems } from '../api';
 
 
 export default function WatchlistPage() {
   const navigate = useNavigate();
-  const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
+  const [watchlist, setWatchlist] = useState<WatchlistApiItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [toast, setToast] = useState<string | null>(null);
 
   useEffect(() => {
-    setWatchlist(getWatchlist());
+    getWatchlistItems()
+      .then(setWatchlist)
+      .catch(() => setWatchlist([]))
+      .finally(() => setLoading(false));
   }, []);
 
-  const handleRemove = (id: string) => {
-    removeFromWatchlist(id);
-    setWatchlist(getWatchlist());
+  const handleRemove = async (id: string) => {
+    const prev = watchlist;
+    setWatchlist((current) => current.filter((item) => item.id !== id));
+    try {
+      await deleteWatchlistItem(id);
+      setToast('已移出观察列表');
+      window.setTimeout(() => setToast(null), 2000);
+    } catch {
+      setWatchlist(prev);
+      setToast('移除失败，请重试');
+      window.setTimeout(() => setToast(null), 2000);
+    }
   };
 
   const handleAnalysis = (stockId: string, stockName: string) => {
     navigate(`/analysis/single-stock?stock_id=${stockId}&stock_name=${encodeURIComponent(stockName)}`);
   };
 
+  if (loading) {
+    return <div className="p-8 text-center text-stone-400">加载中...</div>;
+  }
+
   return (
     <div className="p-4 space-y-6 pb-32">
+      {toast && (
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-ink text-white px-4 py-2 rounded-xl text-sm font-medium shadow-lg flex items-center gap-2">
+          <CheckCircle2 size={16} />
+          <span>{toast}</span>
+        </div>
+      )}
+
       <div className="space-y-2">
         <h2 className="text-2xl font-bold tracking-tight">观察列表</h2>
         <p className="text-sm text-stone-400">跟踪值得持续关注的股票。</p>
@@ -59,7 +84,7 @@ export default function WatchlistPage() {
                 <div className="flex items-center gap-4 mt-3 text-xs text-stone-400">
                   <span className="flex items-center gap-1">
                     <Calendar size={12} />
-                    {new Date(item.added_at).toLocaleDateString()}
+                    {new Date(item.created_at).toLocaleDateString()}
                   </span>
                 </div>
               </div>

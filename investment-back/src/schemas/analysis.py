@@ -54,6 +54,10 @@ class DecisionCard(BaseModel):
     company_profile: Optional[StockCompanyProfile] = None
     recent_events: List[StockEvent] = []
     data_sources: List[str] = []
+    supporting_evidence: List[str] = []     # 支撑证据（本次新增）
+    counter_evidence: List[str] = []         # 反方证据（本次新增）
+    invalidation_conditions: List[str] = []  # 失效条件（本次新增）
+    confidence_level: Literal["low", "medium", "high"] = "medium"  # 置信度等级（本次新增）
 
 
 class AnalysisReasonBase(BaseModel):
@@ -196,13 +200,17 @@ class AnalysisWithDetails(Analysis):
 
 
 class DecisionCardV2(BaseModel):
-    """新路径（六段式决策卡）"""
+    """新路径（六段式决策卡 + 证据结构）"""
     headline_judgement: str
     key_reason_summary: List[Dict[str, Any]]
     user_fit_summary: Dict[str, str]
     next_step_actions: List[str]
     primary_risks: str
     review_at: datetime
+    supporting_evidence: List[str] = []   # 支撑证据（本次新增）
+    counter_evidence: List[str] = []      # 反方证据（本次新增）
+    invalidation_conditions: List[str] = []  # 失效条件（本次新增）
+    confidence_level: Literal["low", "medium", "high"] = "medium"  # 置信度等级（本次新增）
 
 
 class InterventionInfo(BaseModel):

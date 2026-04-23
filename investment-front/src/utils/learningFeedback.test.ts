@@ -11,7 +11,7 @@
  * - Null return when no history and invalid quality option
  */
 
-import { describe, it, expect } from 'vitest';
+import { beforeEach, describe, it, expect } from 'vitest';
 import {
   computeLearningFeedback,
   type ReviewFormData,
@@ -382,16 +382,31 @@ describe('Suggestion text', () => {
 
 // Node test environment needs localStorage stub
 const store: Record<string, string> = {};
-const mockLocalStorage = {
+const mockLocalStorage: Storage = {
+  get length() {
+    return Object.keys(store).length;
+  },
+  clear: () => {
+    Object.keys(store).forEach((key) => delete store[key]);
+  },
   getItem: (key: string) => store[key] ?? null,
-  setItem: (key: string, value: string) => { store[key] = value; },
-  removeItem: (key: string) => { delete store[key]; },
-  clear: () => { Object.keys(store).forEach(k => delete store[k]); },
+  key: (index: number) => Object.keys(store)[index] ?? null,
+  removeItem: (key: string) => {
+    delete store[key];
+  },
+  setItem: (key: string, value: string) => {
+    store[key] = value;
+  },
 };
-if (typeof global.localStorage === 'undefined') {
-  (global as Record<string, unknown>).localStorage = mockLocalStorage;
+
+if (typeof globalThis.localStorage === 'undefined') {
+  Object.defineProperty(globalThis, 'localStorage', {
+    value: mockLocalStorage,
+    configurable: true,
+    writable: true,
+  });
 } else {
-  global.localStorage = mockLocalStorage;
+  globalThis.localStorage = mockLocalStorage;
 }
 
 describe('ResultPage confirm/dismiss localStorage semantics', () => {

@@ -16,9 +16,9 @@ import {
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 
-import { apiGet, apiPost, getLearningHistory, patchReviewResult, postLearningFeedback } from '../api';
+import { apiGet, apiPost, deleteWatchlistItem, getLearningHistory, getWatchlistItems, patchReviewResult, postLearningFeedback, postWatchlistItem } from '../api';
 import type { AnalysisDetail, OutputMarkType } from '../types';
-import { addFocusReason, addToWatchlist, cn, getWatchlist } from '../utils';
+import { addFocusReason, cn } from '../utils';
 import LearningFeedbackCard from '../components/LearningFeedbackCard';
 import { computeLearningFeedback } from '../utils/learningFeedback';
 import type { LearningFeedbackData } from '../components/LearningFeedbackCard';
@@ -115,6 +115,7 @@ export default function ResultPage() {
   const [showFocusReasonModal, setShowFocusReasonModal] = useState(false);
   const [focusReason, setFocusReason] = useState('');
   const [isInWatchlist, setIsInWatchlist] = useState(false);
+  const [watchlistItemId, setWatchlistItemId] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [savingReason, setSavingReason] = useState(false);
 
@@ -315,8 +316,16 @@ export default function ResultPage() {
 
   useEffect(() => {
     if (!analysis?.stock_id) return;
-    const watchlist = getWatchlist();
-    setIsInWatchlist(watchlist.some((item) => item.stock_id === analysis.stock_id));
+    getWatchlistItems()
+      .then((list) => {
+        const found = list.find((item) => item.stock_id === analysis.stock_id);
+        setIsInWatchlist(!!found);
+        setWatchlistItemId(found?.id ?? null);
+      })
+      .catch(() => {
+        setIsInWatchlist(false);
+        setWatchlistItemId(null);
+      });
   }, [analysis?.stock_id]);
 
   const decisionCard = analysis?.decision_card;
@@ -330,18 +339,36 @@ export default function ResultPage() {
   const dataAsOf = analysis?.data_as_of;
   const isExpired = validUntil ? Date.now() > new Date(validUntil).getTime() : analysis?.status === 'expired';
 
-  const handleAddToWatchlist = () => {
+  const handleRemoveFromWatchlist = async () => {
+    if (!watchlistItemId) return;
+    try {
+      await deleteWatchlistItem(watchlistItemId);
+      setIsInWatchlist(false);
+      setWatchlistItemId(null);
+      setToastMessage(`已将 ${stockName} 移出观察列表`);
+      window.setTimeout(() => setToastMessage(null), 2000);
+    } catch {
+      setToastMessage('移除失败，请重试');
+      window.setTimeout(() => setToastMessage(null), 2000);
+    }
+  };
+
+  const handleAddToWatchlist = async () => {
     if (!analysis) return;
 
-    addToWatchlist({
-      stock_id: analysis.stock_id,
-      stock_name: stockName,
-      market,
-      industry: stockIndustry,
-    });
-    setIsInWatchlist(true);
-    setToastMessage(`已将 ${stockName} 加入观察列表`);
-    window.setTimeout(() => setToastMessage(null), 2000);
+    try {
+      const item = await postWatchlistItem({
+        stock_id: analysis.stock_id,
+        focus_reason: undefined,
+      });
+      setIsInWatchlist(true);
+      setWatchlistItemId(item.id);
+      setToastMessage(`已将 ${stockName} 加入观察列表`);
+      window.setTimeout(() => setToastMessage(null), 2000);
+    } catch {
+      setToastMessage('添加失败，请重试');
+      window.setTimeout(() => setToastMessage(null), 2000);
+    }
   };
 
   const handleSaveFocusReason = async () => {
@@ -361,15 +388,13 @@ export default function ResultPage() {
         reason: focusReason.trim(),
       });
 
-      addToWatchlist({
+      const watchlistItem = await postWatchlistItem({
         stock_id: analysis.stock_id,
-        stock_name: stockName,
-        market,
-        industry: stockIndustry,
         focus_reason: focusReason.trim(),
       });
 
       setIsInWatchlist(true);
+      setWatchlistItemId(watchlistItem.id);
       setShowFocusReasonModal(false);
       setFocusReason('');
       setToastMessage('已记录关注理由');
@@ -516,17 +541,16 @@ export default function ResultPage() {
             </div>
           </div>
           <button
-            onClick={handleAddToWatchlist}
-            disabled={isInWatchlist}
+            onClick={isInWatchlist ? handleRemoveFromWatchlist : handleAddToWatchlist}
             className={cn(
               'p-2 rounded-xl transition-all',
               isInWatchlist
-                ? 'bg-yellow-100 text-yellow-600'
+                ? 'bg-red-50 text-red-500 hover:bg-red-100'
                 : 'bg-stone-100 text-stone-400 hover:bg-yellow-50 hover:text-yellow-600'
             )}
-            title={isInWatchlist ? '已在观察列表' : '加入观察列表'}
+            title={isInWatchlist ? '移出观察列表' : '加入观察列表'}
           >
-            <Star size={20} className={isInWatchlist ? 'fill-yellow-500' : undefined} />
+            <Star size={20} className={isInWatchlist ? 'fill-red-400' : undefined} />
           </button>
         </div>
 
@@ -561,11 +585,23 @@ export default function ResultPage() {
         </div>
 
         <div className="space-y-2">
-          <label className="text-[10px] font-bold text-stone-300 uppercase tracking-widest">一句话判断</label>
+          <div className="flex items-center justify-between gap-2">
+            <label className="text-[10px] font-bold text-stone-300 uppercase tracking-widest">一句话判断</label>
+            {decisionCard.confidence_level && (
+              <span className={cn(
+                'px-2 py-0.5 rounded-full text-[10px] font-bold',
+                decisionCard.confidence_level === 'high' && 'bg-emerald-100 text-emerald-700',
+                decisionCard.confidence_level === 'medium' && 'bg-amber-100 text-amber-700',
+                decisionCard.confidence_level === 'low' && 'bg-red-100 text-red-700',
+              )}>
+                {decisionCard.confidence_level === 'high' ? '高置信' : decisionCard.confidence_level === 'medium' ? '中置信' : '低置信'}
+              </span>
+            )}
+          </div>
           <h2 className="text-xl font-bold leading-tight">{decisionCard.headline_judgement}</h2>
         </div>
 
-        <div className="grid grid-cols-2 gap-4 pt-4 border-t border-stone-50">
+        <div className="grid grid-cols-3 gap-2 pt-4 border-t border-stone-50">
           <div className="space-y-1">
             <label className="text-[10px] font-bold text-stone-300 uppercase tracking-widest">适合谁</label>
             <p className="text-xs font-medium text-emerald-600">{decisionCard.user_fit_summary.fit}</p>
@@ -573,6 +609,17 @@ export default function ResultPage() {
           <div className="space-y-1">
             <label className="text-[10px] font-bold text-stone-300 uppercase tracking-widest">不适合谁</label>
             <p className="text-xs font-medium text-red-600">{decisionCard.user_fit_summary.unfit}</p>
+          </div>
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold text-stone-300 uppercase tracking-widest">置信等级</label>
+            <p className={cn(
+              'text-xs font-bold',
+              decisionCard.confidence_level === 'high' && 'text-emerald-600',
+              decisionCard.confidence_level === 'medium' && 'text-amber-600',
+              decisionCard.confidence_level === 'low' && 'text-red-600',
+            )}>
+              {decisionCard.confidence_level === 'high' ? '高' : decisionCard.confidence_level === 'medium' ? '中' : '低'}
+            </p>
           </div>
         </div>
       </section>
@@ -600,6 +647,42 @@ export default function ResultPage() {
         </div>
       </section>
 
+      {decisionCard.supporting_evidence && decisionCard.supporting_evidence.length > 0 && (
+        <section className="bg-emerald-50 rounded-2xl p-5 border border-emerald-100 space-y-3">
+          <div className="flex items-center gap-2">
+            <div className="w-4 h-4 rounded-full bg-emerald-400 flex items-center justify-center">
+              <div className="w-1.5 h-1.5 rounded-full bg-white" />
+            </div>
+            <h3 className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest">支撑证据</h3>
+          </div>
+          <div className="space-y-2">
+            {decisionCard.supporting_evidence.slice(0, 3).map((item, index) => (
+              <div key={`sup-${index}`} className="flex gap-2 items-start">
+                <span className="text-[10px] text-emerald-500 font-bold shrink-0 mt-0.5">S{index + 1}</span>
+                <p className="text-xs text-emerald-800 leading-relaxed">{item}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {decisionCard.counter_evidence && decisionCard.counter_evidence.length > 0 && (
+        <section className="bg-red-50 rounded-2xl p-5 border border-red-100 space-y-3">
+          <div className="flex items-center gap-2">
+            <AlertTriangle size={14} className="text-red-400" />
+            <h3 className="text-[10px] font-bold text-red-600 uppercase tracking-widest">反方证据</h3>
+          </div>
+          <div className="space-y-2">
+            {decisionCard.counter_evidence.map((item, index) => (
+              <div key={`cnt-${index}`} className="flex gap-2 items-start">
+                <span className="text-[10px] text-red-400 font-bold shrink-0 mt-0.5">C{index + 1}</span>
+                <p className="text-xs text-red-800 leading-relaxed">{item}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       <section className="space-y-3">
         <h3 className="text-xs font-bold text-stone-400 uppercase tracking-widest px-1">下一步建议动作</h3>
         <div className="space-y-2">
@@ -623,6 +706,23 @@ export default function ResultPage() {
           <p className={cn('text-sm leading-relaxed', isExpired ? 'text-stone-700' : 'text-stone-300')}>
             {decisionCard.primary_risks}
           </p>
+          {decisionCard.invalidation_conditions && decisionCard.invalidation_conditions.length > 0 && (
+            <div className={cn('pt-3 mt-3 border-t space-y-1.5', isExpired ? 'border-stone-300' : 'border-white/10')}>
+              <p className={cn('text-[10px] font-bold uppercase tracking-widest', isExpired ? 'text-stone-500' : 'text-amber-400')}>
+                以下情况请重新评估
+              </p>
+              {decisionCard.invalidation_conditions.map((cond, index) => (
+                <div key={`inv-${index}`} className="flex gap-2 items-start">
+                  <span className={cn('text-[10px] font-bold shrink-0 mt-0.5', isExpired ? 'text-stone-400' : 'text-amber-400')}>
+                    ✕
+                  </span>
+                  <p className={cn('text-xs leading-relaxed', isExpired ? 'text-stone-600' : 'text-stone-400')}>
+                    {cond}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className={cn('grid grid-cols-2 gap-4 pt-4 border-t', isExpired ? 'border-stone-300' : 'border-white/10')}>
@@ -899,11 +999,15 @@ export default function ResultPage() {
             记录关注理由
           </button>
           <button
-            onClick={handleAddToWatchlist}
-            disabled={isInWatchlist}
-            className="flex-1 py-3 bg-ink text-white rounded-xl font-bold text-sm hover:bg-stone-800 transition-colors disabled:opacity-40"
+            onClick={isInWatchlist ? handleRemoveFromWatchlist : handleAddToWatchlist}
+            className={cn(
+              'flex-1 py-3 rounded-xl font-bold text-sm transition-colors',
+              isInWatchlist
+                ? 'bg-red-50 text-red-600 hover:bg-red-100'
+                : 'bg-ink text-white hover:bg-stone-800'
+            )}
           >
-            {isInWatchlist ? '已在观察列表' : '加入观察列表'}
+            {isInWatchlist ? '移出观察列表' : '加入观察列表'}
           </button>
         </div>
       </div>

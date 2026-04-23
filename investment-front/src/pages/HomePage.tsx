@@ -2,16 +2,16 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AlertCircle, History, Search, ShieldCheck, Star, UserCircle } from 'lucide-react';
 
-import { apiGet } from '../api';
-import type { AnalysisRecord, ReviewTask, UserProfile, WatchlistItem } from '../types';
-import { getWatchlist, SCENARIOS } from '../utils';
+import { apiGet, getWatchlistItems } from '../api';
+import type { AnalysisRecord, ReviewTask, UserProfile, WatchlistApiItem } from '../types';
+import { SCENARIOS, computeUnfinishedReviews, sortUnfinishedReviews } from '../utils';
 
 
 export default function HomePage() {
   const [records, setRecords] = useState<AnalysisRecord[]>([]);
   const [reviews, setReviews] = useState<ReviewTask[]>([]);
   const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
+  const [watchlist, setWatchlist] = useState<WatchlistApiItem[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -41,14 +41,16 @@ export default function HomePage() {
     };
 
     loadHomeData().catch(() => {});
-    setWatchlist(getWatchlist());
+    getWatchlistItems()
+      .then(setWatchlist)
+      .catch(() => setWatchlist([]));
 
     return () => {
       cancelled = true;
     };
   }, []);
 
-  const pendingReviews = reviews.filter((item) => item.status === 'pending');
+  const pendingReviews = sortUnfinishedReviews(computeUnfinishedReviews(reviews));
 
   return (
     <div className="p-4 space-y-6">
@@ -163,18 +165,34 @@ export default function HomePage() {
             </Link>
           </div>
           <div className="space-y-2">
-            {pendingReviews.slice(0, 2).map((review) => (
-              <Link
-                key={review.id}
-                to={`/analysis/post-trade?stock_id=${review.stock_id || ''}&stock_name=${encodeURIComponent(review.stock_name)}`}
-                className="block bg-white rounded-xl p-3 border border-stone-100"
-              >
-                <div className="font-semibold text-sm">{review.stock_name}</div>
-                <div className="text-[10px] text-stone-400 mt-0.5">
-                  {new Date(review.review_at).toLocaleDateString()} 到期
-                </div>
-              </Link>
-            ))}
+            {pendingReviews.slice(0, 2).map((review) => {
+              const isExpired = review.status === 'expired';
+              const overdueDays = isExpired
+                ? Math.ceil((Date.now() - new Date(review.review_at).getTime()) / (1000 * 60 * 60 * 24))
+                : 0;
+              return (
+                <Link
+                  key={review.id}
+                  to={`/analysis/post-trade?stock_id=${review.stock_id || ''}&stock_name=${encodeURIComponent(review.stock_name)}`}
+                  className={isExpired
+                    ? 'block bg-white rounded-xl p-3 border border-red-200 bg-red-50/30'
+                    : 'block bg-white rounded-xl p-3 border border-stone-100'
+                  }
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-sm">{review.stock_name}</span>
+                    {isExpired && (
+                      <span className="px-1.5 py-0.5 bg-red-100 text-red-600 rounded text-[10px] font-bold">
+                        已逾期 {overdueDays} 天
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-[10px] text-stone-400 mt-0.5">
+                    {new Date(review.review_at).toLocaleDateString()} 到期
+                  </div>
+                </Link>
+              );
+            })}
           </div>
         </section>
       )}

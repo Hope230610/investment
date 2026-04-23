@@ -1,7 +1,7 @@
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
-import type { FocusReason, WatchlistItem } from './types';
+import type { FocusReason, ReviewTask } from './types';
 
 
 export function cn(...inputs: ClassValue[]) {
@@ -61,43 +61,7 @@ export const BEHAVIOR_TAGS = [
 
 
 export const STORAGE_KEYS = {
-  WATCHLIST: 'ai_investment_watchlist',
   FOCUS_REASONS: 'ai_investment_focus_reasons',
-};
-
-
-export const getWatchlist = (): WatchlistItem[] => {
-  const stored = localStorage.getItem(STORAGE_KEYS.WATCHLIST);
-  return stored ? JSON.parse(stored) : [];
-};
-
-
-export const addToWatchlist = (
-  item: Omit<WatchlistItem, 'id' | 'added_at'> & { focus_reason?: string }
-): WatchlistItem => {
-  const watchlist = getWatchlist();
-  const newItem: WatchlistItem = {
-    ...item,
-    id: `watch_${Date.now()}`,
-    added_at: new Date().toISOString(),
-  };
-
-  const existingIndex = watchlist.findIndex((watchItem) => watchItem.stock_id === item.stock_id);
-  if (existingIndex !== -1) {
-    watchlist[existingIndex] = newItem;
-  } else {
-    watchlist.push(newItem);
-  }
-
-  localStorage.setItem(STORAGE_KEYS.WATCHLIST, JSON.stringify(watchlist));
-  return newItem;
-};
-
-
-export const removeFromWatchlist = (id: string) => {
-  const watchlist = getWatchlist();
-  const filtered = watchlist.filter((item) => item.id !== id);
-  localStorage.setItem(STORAGE_KEYS.WATCHLIST, JSON.stringify(filtered));
 };
 
 
@@ -120,3 +84,28 @@ export const addFocusReason = (
   localStorage.setItem(STORAGE_KEYS.FOCUS_REASONS, JSON.stringify(reasons));
   return newReason;
 };
+
+
+/**
+ * 未完成复盘任务 = pending + expired（不含 completed）
+ */
+export const computeUnfinishedReviews = (reviews: ReviewTask[]) =>
+  reviews.filter((t) => t.status === 'pending' || t.status === 'expired');
+
+/**
+ * 逾期天数（仅对 expired 任务有意义，pending 返回 0）
+ */
+export const computeOverdueDays = (reviewAt: string): number => {
+  const diff = Date.now() - new Date(reviewAt).getTime();
+  return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+};
+
+/**
+ * 未完成复盘任务按紧迫程度排序：expired 前，pending 后；同状态内按 review_at 升序
+ */
+export const sortUnfinishedReviews = (tasks: ReviewTask[]): ReviewTask[] =>
+  [...tasks].sort((a, b) => {
+    if (a.status === 'expired' && b.status !== 'expired') return -1;
+    if (a.status !== 'expired' && b.status === 'expired') return 1;
+    return new Date(a.review_at).getTime() - new Date(b.review_at).getTime();
+  });

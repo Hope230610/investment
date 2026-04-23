@@ -50,6 +50,12 @@ class AnalysisResult(Base):
     primary_risks = Column(Text, nullable=False)  # 主要风险
     review_at = Column(DateTime, nullable=False)  # 复查时点
 
+    # 证据结构（本次新增）
+    supporting_evidence = Column(JSON, nullable=False, default=list)   # [string] 支撑证据
+    counter_evidence = Column(JSON, nullable=False, default=list)      # [string] 反方证据
+    invalidation_conditions = Column(JSON, nullable=False, default=list)  # [string] 失效条件
+    confidence_level = Column(String(20), nullable=False, default="medium")  # low/medium/high
+
     # 行为干预引用
     intervention = Column(JSON, nullable=True)  # BehaviorIntervention JSON 结构
 

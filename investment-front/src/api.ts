@@ -1,4 +1,5 @@
 import { clearAuthSession, getAccessToken } from './auth';
+import type { WatchlistApiItem } from './types';
 
 /** 统一错误响应结构（与后端 ErrorResponse 对应） */
 export interface UnifiedError {
@@ -154,6 +155,43 @@ export function apiPut<T>(
   options: Omit<ApiRequestOptions, 'method' | 'body'> = {},
 ) {
   return apiRequest<T>(url, { ...options, method: 'PUT', body });
+}
+
+// ─── Watchlist v2 ───────────────────────────────────────────────────────────────
+
+export interface WatchlistUpsertPayload {
+  stock_id: string;
+  focus_reason?: string | null;
+}
+
+export interface WatchlistUpdatePayload {
+  focus_reason?: string | null;
+}
+
+/** B1a 冻结的观察列表专用 API；B1b 页面切换时直接复用。 */
+export function getWatchlistItems() {
+  return apiGet<WatchlistApiItem[]>('/api/v1/watchlist');
+}
+
+export function postWatchlistItem(payload: WatchlistUpsertPayload) {
+  return apiPost<WatchlistApiItem>(
+    '/api/v1/watchlist',
+    payload as unknown as Record<string, unknown>,
+  );
+}
+
+export function putWatchlistItem(itemId: string, payload: WatchlistUpdatePayload) {
+  return apiPut<WatchlistApiItem>(
+    `/api/v1/watchlist/${itemId}`,
+    payload as unknown as Record<string, unknown>,
+  );
+}
+
+export function deleteWatchlistItem(itemId: string) {
+  return apiRequest<{ message: string }>(`/api/v1/watchlist/${itemId}`, {
+    method: 'DELETE',
+    auth: true,
+  });
 }
 
 // ─── Learning Feedback ──────────────────────────────────────────────────────────

@@ -4,6 +4,7 @@ import { Calendar, CheckCircle2, Clock } from 'lucide-react';
 
 import { apiGet } from '../api';
 import type { ReviewTask } from '../types';
+import { computeOverdueDays, computeUnfinishedReviews } from '../utils';
 
 
 export default function ReviewsPage() {
@@ -38,7 +39,7 @@ export default function ReviewsPage() {
   }, []);
 
   // 已完成 = 有 review_result 的记录（无论是"稍后"还是"确认"触发的）
-  const pending = reviews.filter((task) => task.status === 'pending' || task.status === 'expired');
+  const pending = computeUnfinishedReviews(reviews);
   const completed = reviews.filter((task) => task.review_result != null);
 
   if (loading) return <div className="p-8 text-center text-stone-400">加载中...</div>;
@@ -56,19 +57,34 @@ export default function ReviewsPage() {
           <h3 className="text-xs font-bold text-stone-400 uppercase tracking-widest">待处理 ({pending.length})</h3>
         </div>
         <div className="space-y-3">
-          {pending.length > 0 ? pending.map((task) => (
-            <div key={task.id} className="bg-white rounded-2xl p-4 border border-stone-100 card-shadow space-y-4">
-              <div className="flex justify-between items-start">
-                <div>
-                  <h4 className="font-bold text-lg">{task.stock_name}</h4>
-                  <p className="text-[10px] text-stone-400 uppercase tracking-widest mt-0.5">
-                    来源：{task.scenario === 'single_stock_check' ? '单股咨询' : task.scenario === 'pre_trade_check' ? '交易前自检' : '交易后复盘'}
-                  </p>
+          {pending.length > 0 ? pending.map((task) => {
+            const isExpired = task.status === 'expired';
+            const overdueDays = isExpired ? computeOverdueDays(task.review_at) : 0;
+            return (
+              <div
+                key={task.id}
+                className={isExpired
+                  ? 'bg-white rounded-2xl p-4 border border-red-300 bg-red-50/30 card-shadow space-y-4'
+                  : 'bg-white rounded-2xl p-4 border border-stone-100 card-shadow space-y-4'
+                }
+              >
+                <div className="flex justify-between items-start">
+                  <div>
+                    <h4 className="font-bold text-lg">{task.stock_name}</h4>
+                    <p className="text-[10px] text-stone-400 uppercase tracking-widest mt-0.5">
+                      来源：{task.scenario === 'single_stock_check' ? '单股咨询' : task.scenario === 'pre_trade_check' ? '交易前自检' : '交易后复盘'}
+                    </p>
+                  </div>
+                  {isExpired ? (
+                    <span className="px-2 py-1 bg-red-100 text-red-600 rounded text-[10px] font-bold">
+                      已逾期 {overdueDays} 天
+                    </span>
+                  ) : (
+                    <span className="px-2 py-1 bg-amber-50 text-amber-600 rounded text-[10px] font-bold">
+                      待执行
+                    </span>
+                  )}
                 </div>
-                <div className="px-2 py-1 bg-amber-50 text-amber-600 rounded text-[10px] font-bold">
-                  {task.status === 'expired' ? '已到期' : '待执行'}
-                </div>
-              </div>
               <div className="flex items-center justify-between pt-4 border-t border-stone-50">
                 <div className="flex items-center gap-2 text-stone-400">
                   <Calendar size={14} />
@@ -81,8 +97,9 @@ export default function ReviewsPage() {
                   去复盘
                 </Link>
               </div>
-            </div>
-          )) : (
+              </div>
+            );
+          }) : (
             <div className="p-12 text-center bg-stone-50 rounded-2xl border border-dashed border-stone-200">
               <p className="text-sm text-stone-400">暂无待复盘任务</p>
             </div>

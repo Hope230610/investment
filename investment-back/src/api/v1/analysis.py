@@ -374,6 +374,11 @@ def process_analysis_v2(task_uuid_str: str):
                 explanation_layer=result.explanation_layer.model_dump(mode="json") if result.explanation_layer else None,
                 output_tags=["model_inference"],
                 valid_period=ValidPeriodEnum.MEDIUM,
+                # 证据结构（本次新增）
+                supporting_evidence=[e for e in getattr(result.decision_card, "supporting_evidence", [])],
+                counter_evidence=[e for e in getattr(result.decision_card, "counter_evidence", [])],
+                invalidation_conditions=[e for e in getattr(result.decision_card, "invalidation_conditions", [])],
+                confidence_level=getattr(result.decision_card, "confidence_level", "medium"),
             )
             db.add(result_record)
 
@@ -504,6 +509,11 @@ def _get_analysis_from_new_tables(
             "next_step_actions": result.next_step_actions or [],
             "primary_risks": result.primary_risks or "",
             "review_at": result.review_at,
+            # 证据结构（本次新增）
+            "supporting_evidence": result.supporting_evidence or [],
+            "counter_evidence": result.counter_evidence or [],
+            "invalidation_conditions": result.invalidation_conditions or [],
+            "confidence_level": result.confidence_level or "medium",
         }
         intervention_info = None
         if result.intervention:
@@ -714,7 +724,8 @@ def _add_watchlist_from_new_path(
 ):
     """新表路径：将关注理由写入 watchlists 表（合并设计）"""
     import uuid as uuid_lib
-    from src.models.watchlist_v2 import Watchlist, AddedFromScenarioEnum
+    from src.models.watchlist_v2 import AddedFromScenarioEnum
+    from src.services.watchlist_service import WatchlistService
 
     uuid_val = uuid_lib.UUID(analysis_id)
 
@@ -735,46 +746,26 @@ def _add_watchlist_from_new_path(
         "post_trade_review": AddedFromScenarioEnum.POST_TRADE_REVIEW,
     }
     added_from = scenario_map.get(scenario_str, None)
-
-    # 查找是否已存在（upsert 路径）
-    existing = db.query(Watchlist).filter(
-        Watchlist.user_id == user_id,
-        Watchlist.stock_id == reason_data.stock_id,
-    ).first()
-
-    if existing:
-        # 幂等更新：同用户同股票的第二次写入只更新 focus_reason
-        existing.focus_reason = reason_data.reason
-        existing.added_from_scenario = added_from
-        existing.source_analysis_id = uuid_val
-        db.commit()
-        db.refresh(existing)
-        return RecordReasonResponse(
-            id=str(existing.id),
-            user_id=int(existing.user_id),
-            stock_id=existing.stock_id,
-            focus_reason=existing.focus_reason or "",
-            created_at=existing.created_at,
-            updated_at=existing.updated_at,
+    try:
+        item = WatchlistService(db).upsert_watchlist_item(
+            user_id,
+            reason_data.stock_id,
+            focus_reason=reason_data.reason,
+            focus_reason_provided=True,
+            added_from_scenario=added_from,
+            source_analysis_id=uuid_val,
+            notify_on_events=True,
         )
-
-    watchlist = Watchlist(
-        user_id=user_id,
-        stock_id=reason_data.stock_id,
-        focus_reason=reason_data.reason,
-        added_from_scenario=added_from,
-        source_analysis_id=uuid_val,
-        notify_on_events=True,
-    )
-    db.add(watchlist)
-    db.commit()
-    db.refresh(watchlist)
+    except ValueError as exc:
+        if str(exc) == "STOCK_NOT_FOUND":
+            return api_error(HTTP_404_NOT_FOUND, "STOCK_NOT_FOUND", "股票未找到", request)
+        raise
 
     return RecordReasonResponse(
-        id=str(watchlist.id),
-        user_id=int(user_id),
-        stock_id=watchlist.stock_id,
-        focus_reason=watchlist.focus_reason or "",
-        created_at=watchlist.created_at,
-        updated_at=watchlist.updated_at,
+        id=item["id"],
+        user_id=item["user_id"],
+        stock_id=item["stock_id"],
+        focus_reason=item["focus_reason"] or "",
+        created_at=item["created_at"],
+        updated_at=item["updated_at"],
     )

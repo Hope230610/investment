@@ -137,6 +137,10 @@ export interface DecisionCardV2 {
   next_step_actions: string[];
   primary_risks: string;
   review_at: string;
+  supporting_evidence: string[];         // 支撑证据（本次新增）
+  counter_evidence: string[];            // 反方证据（本次新增）
+  invalidation_conditions: string[];     // 失效条件（本次新增）
+  confidence_level: 'low' | 'medium' | 'high';  // 置信度等级（本次新增）
 }
 
 export interface BehaviorIntervention {
@@ -223,6 +227,10 @@ export interface AnalysisDetail {
   scenario_payload?: Record<string, unknown> | null;
 }
 
+/**
+ * 当前页面使用的本地视图模型（B1b 已完成，前端不再依赖此类型，页面直接消费 WatchlistApiItem）。
+ * `added_at` 字段来源为 `WatchlistApiItem.created_at`。
+ */
 export interface WatchlistItem {
   id: string;
   stock_id: string;
@@ -231,6 +239,21 @@ export interface WatchlistItem {
   industry?: string | null;
   added_at: string;
   focus_reason?: string;
+}
+
+/**
+ * watchlist v2 专用 API 契约（B1a 冻结，B1b 已完成，前端各页面直接消费此类型）。
+ */
+export interface WatchlistApiItem {
+  id: string;
+  user_id: number;
+  stock_id: string;
+  stock_name: string;
+  market: string;
+  industry?: string | null;
+  focus_reason: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface FocusReason {

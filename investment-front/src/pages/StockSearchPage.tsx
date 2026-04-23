@@ -4,7 +4,7 @@ import { CheckCircle2, ChevronRight, Search, Star, X } from 'lucide-react';
 
 import { apiGet } from '../api';
 import type { StockSearchItem } from '../types';
-import { addToWatchlist, getWatchlist } from '../utils';
+import { getWatchlistItems, postWatchlistItem } from '../api';
 
 
 const hotSearches = ['贵州茅台', '宁德时代', '平安银行', '招商银行'];
@@ -19,12 +19,13 @@ export default function StockSearchPage() {
   const [results, setResults] = useState<StockSearchItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [watchlist, setWatchlist] = useState<string[]>([]);
+  const [watchlistStockIds, setWatchlistStockIds] = useState<Set<string>>(new Set());
   const [toast, setToast] = useState<string | null>(null);
 
   useEffect(() => {
-    const storedWatchlist = getWatchlist();
-    setWatchlist(storedWatchlist.map((item) => item.stock_id));
+    getWatchlistItems()
+      .then((list) => setWatchlistStockIds(new Set(list.map((item) => item.stock_id))))
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -63,9 +64,14 @@ export default function StockSearchPage() {
     };
   }, [query]);
 
-  const handleSelect = (stock: StockSearchItem) => {
+  const handleSelect = async (stock: StockSearchItem) => {
     if (callback === '/watchlist') {
-      addToWatchlist(stock);
+      try {
+        await postWatchlistItem({ stock_id: stock.stock_id });
+        setWatchlistStockIds((prev) => new Set([...prev, stock.stock_id]));
+      } catch {
+        // 静默失败
+      }
       navigate('/watchlist');
       return;
     }
@@ -78,15 +84,20 @@ export default function StockSearchPage() {
     navigate(-1);
   };
 
-  const handleAddToWatchlist = (event: React.MouseEvent, stock: StockSearchItem) => {
+  const handleAddToWatchlist = async (event: React.MouseEvent, stock: StockSearchItem) => {
     event.stopPropagation();
-    addToWatchlist(stock);
-    setWatchlist((current) => [...new Set([...current, stock.stock_id])]);
-    setToast(`已将 ${stock.stock_name} 加入观察列表`);
-    window.setTimeout(() => setToast(null), 2000);
+    try {
+      await postWatchlistItem({ stock_id: stock.stock_id });
+      setWatchlistStockIds((prev) => new Set([...prev, stock.stock_id]));
+      setToast(`已将 ${stock.stock_name} 加入观察列表`);
+      window.setTimeout(() => setToast(null), 2000);
+    } catch {
+      setToast('添加失败，请重试');
+      window.setTimeout(() => setToast(null), 2000);
+    }
   };
 
-  const isInWatchlist = (stockId: string) => watchlist.includes(stockId);
+  const isInWatchlist = (stockId: string) => watchlistStockIds.has(stockId);
 
   return (
     <div className="flex flex-col h-full">

@@ -15,15 +15,17 @@ class WatchlistItemUpdate(BaseModel):
     focus_reason: Optional[str] = None
 
 class WatchlistItem(WatchlistItemBase, TimestampMixin):
-    id: int
+    id: str
     user_id: int
+    stock_name: str
+    market: str
+    industry: Optional[str] = None
 
     class Config:
         from_attributes = True
 
 class WatchlistItemWithStock(WatchlistItem):
-    stock_name: Optional[str] = None
-    industry: Optional[str] = None
+    pass
 
     class Config:
         from_attributes = True

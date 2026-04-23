@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from typing import Any, Iterable
+from typing import Any, Iterable, Literal
 
 import structlog
 
@@ -111,6 +111,13 @@ class AnalysisGenerationService:
             review_at=review_at,
             valid_until=valid_until,
             detail=detail,
+            confidence_level=(
+                "low" if metrics["data_completeness"] <= 1
+                else "low" if risk_score >= 3
+                else "medium" if risk_score >= 2 or metrics["data_completeness"] == 2
+                else "high"
+            ),
+            risk_score=risk_score,
         )
         return AnalysisResult(
             status="ready",
@@ -144,6 +151,7 @@ class AnalysisGenerationService:
         scenario_payload: dict[str, Any],
         intervention: BehaviorIntervention | None,
     ) -> AnalysisResult:
+        risk_score = metrics["risk_score"]
         intent = str(scenario_payload.get("intent") or "").lower()
         trigger = str(scenario_payload.get("trigger_reason") or "")
         emotion_level = int(scenario_payload.get("emotion_level") or 3)
@@ -161,7 +169,7 @@ class AnalysisGenerationService:
 
         if chasing_risk or panic_risk or emotional_risk:
             headline = "当前更适合先暂停动作，等触发条件重新验证"
-        elif metrics["risk_score"] >= 3:
+        elif risk_score >= 3:
             headline = "当前不宜只凭单一信号行动，建议补充确认后再决策"
         else:
             headline = "可以保留计划，但先把条件、仓位和失效点写清楚"
@@ -209,6 +217,13 @@ class AnalysisGenerationService:
             review_at=review_at,
             valid_until=valid_until,
             detail=detail,
+            confidence_level=(
+                "low" if metrics["data_completeness"] <= 1
+                else "low" if risk_score >= 3
+                else "medium" if risk_score >= 2 or metrics["data_completeness"] == 2
+                else "high"
+            ),
+            risk_score=risk_score,
         )
         return AnalysisResult(
             status="ready",
@@ -243,6 +258,7 @@ class AnalysisGenerationService:
         scenario_payload: dict[str, Any],
         intervention: BehaviorIntervention | None,
     ) -> AnalysisResult:
+        risk_score = metrics["risk_score"]
         action_taken = str(scenario_payload.get("action_taken") or "未填写")
         outcome_summary = str(scenario_payload.get("outcome_summary") or "未填写")
         plan_deviation = scenario_payload.get("plan_deviation")
@@ -303,6 +319,13 @@ class AnalysisGenerationService:
             review_at=review_at,
             valid_until=valid_until,
             detail=detail,
+            confidence_level=(
+                "low" if metrics["data_completeness"] <= 1
+                else "low" if risk_score >= 3
+                else "medium" if risk_score >= 2 or metrics["data_completeness"] == 2
+                else "high"
+            ),
+            risk_score=risk_score,
         )
         return AnalysisResult(
             status="ready",
@@ -360,6 +383,8 @@ class AnalysisGenerationService:
             review_at=review_at,
             valid_until=valid_until,
             detail=detail,
+            confidence_level="low",
+            risk_score=0,
         )
         return AnalysisResult(
             status="ready",
@@ -386,7 +411,38 @@ class AnalysisGenerationService:
         review_at: datetime,
         valid_until: datetime,
         detail: StockDetail,
+        confidence_level: Literal["low", "medium", "high"] = "medium",
+        risk_score: int = 0,
     ) -> DecisionCard:
+        # supporting_evidence: 从 key_reason_summary 中提取 DATA_FACT 前 3 条
+        supporting = [
+            f"[支撑] {r.text}"
+            for r in reasons
+            if r.tag == OutputMarkType.DATA_FACT
+        ][:3]
+        if not supporting:
+            supporting = [f"[支撑] {r.text}" for r in reasons[:3]]
+
+        # counter_evidence: 基于风险得分和数据完整度生成
+        counter: list[str] = []
+        if risk_score >= 2 and detail.recent_events:
+            latest = detail.recent_events[0]
+            counter.append(f"如果「{latest.title}」相关风险兑现，判断方向可能需要重新评估")
+        if risk_score >= 2:
+            counter.append("当前判断建立在已知信号上，若新的不利信息出现，结论方向可能反转")
+        if not detail.quote_snapshot or not detail.recent_history:
+            counter.append("数据信息不足，当前方结论的可靠性有限，不宜过度依赖")
+        if not counter:
+            counter.append("短期催化剂消失或市场环境变化时，当前逻辑需重新评估")
+            counter.append("结论有效期过后，判断应重新生成，不建议长期沿用")
+
+        # invalidation_conditions: 固定 3 条
+        invalidation: list[str] = [
+            f"超过结论有效期（{valid_until.strftime('%Y-%m-%d')}）",
+            "出现监管问询、风险提示、减持公告或重大不利事件",
+            "价格出现放量异动（涨跌幅超过 ±5%）或原有趋势发生逆转",
+        ]
+
         return DecisionCard(
             headline_judgement=headline,
             key_reason_summary=reasons,
@@ -403,6 +459,10 @@ class AnalysisGenerationService:
             company_profile=detail.company_profile,
             recent_events=detail.recent_events,
             data_sources=detail.data_sources,
+            supporting_evidence=supporting,
+            counter_evidence=counter,
+            invalidation_conditions=invalidation,
+            confidence_level=confidence_level,
         )
 
     def _build_metrics(
