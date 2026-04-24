@@ -1,0 +1,8 @@
+# p1-watchlist-frontend-switch
+schema: openspec.change/v1
+status: proposed
+capabilities:
+  - watchlist-and-focus
+created_by: 张烜荣
+created_at: 2026-04-23
+description: 前端全切 watchlist v2 服务端，移除 localStorage 依赖。4 个页面切换 API，utils.ts 清理，B1a handoff 契约落地。

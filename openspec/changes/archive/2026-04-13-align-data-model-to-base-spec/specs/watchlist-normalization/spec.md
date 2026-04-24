@@ -1,8 +1,4 @@
-## Purpose
-
-定义规范化观察列表的数据结构，将原有的 `watchlist_items` 和 `focus_reasons` 两表合并为单一 `watchlists` 表，消除多表关联带来的查询复杂性。
-
-## Requirements
+## ADDED Requirements
 
 ### Requirement: 观察列表必须以股票为维度去重
 系统 SHALL 以用户 + 股票为唯一约束（`UNIQUE(user_id, stock_id)`）维护观察列表，同一用户对同一股票不得重复添加。

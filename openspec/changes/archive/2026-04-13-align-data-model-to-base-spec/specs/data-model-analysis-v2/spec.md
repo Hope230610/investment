@@ -1,8 +1,4 @@
-## Purpose
-
-定义分析任务（analysis_tasks）与分析结果（analysis_results）分离后的数据结构规范，支持 `partial_ready` 中间状态，满足单股咨询、交易前检查、交易后复盘三个场景的结构化输入输出。
-
-## Requirements
+## ADDED Requirements
 
 ### Requirement: 分析任务必须包含输入快照
 系统 SHALL 在创建分析任务时保存用户画像快照和场景输入数据。画像快照 MUST 仅包含经验层级、持有周期、风险偏好、行为标签和来源五个字段，不得混入手机号、邮箱或资金规模等高敏字段。

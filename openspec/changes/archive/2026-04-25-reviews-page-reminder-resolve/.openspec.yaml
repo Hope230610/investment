@@ -1,0 +1,27 @@
+name: reviews-page-reminder-resolve
+date: 2026-04-25
+status: archived
+owner: 张烜荣
+
+summary: |
+  修复 ReviewsPage 入口完成后未完成 reminder 数量未净减少的问题。
+  通过在 scenario_payload 中透传 pending_review_task_id，
+  让后端在两个 ReviewTask 创建位置（analysis_service.py、analysis.py）均跳过创建，
+  配合 ResultPage.patch 原始 reminder，实现 29→28 的产品效果。
+
+artifacts:
+  - proposal.md
+  - design.md
+  - tasks.md
+  - SMOKE_CHECKLIST.md
+
+changed_files:
+  backend:
+    - investment-back/src/services/analysis_service.py  # 跳过同步创建 ReviewTask
+    - investment-back/src/api/v1/analysis.py              # 跳过 completion 时创建 ReviewTask
+  frontend:
+    - investment-front/src/pages/PostTradeInput.tsx      # 透传 pending_review_task_id
+
+smoke_passed: true
+smoke_date: 2026-04-25
+smoke_result: "29 → 28，ReviewsPage 入口净减少 1 个未完成 reminder"

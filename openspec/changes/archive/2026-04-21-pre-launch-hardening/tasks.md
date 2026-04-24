@@ -27,8 +27,8 @@
 - [x] 4.1 补 learningFeedback.test.ts：Mock Step1 成功 Step2 失败，验证 ResultPage 行为（含静默标记 + 日志）
 - [x] 4.2 补 learningFeedback.test.ts：Mock Step1 + Step2 均成功，验证 DB 落库（emotion_history + review_tasks.status）
 - [x] 4.3 固化 smoke checklist 到文档（覆盖：登录、分析发起、结果页 confirm、记录页、Profile 趋势区、record-reason）
-- [ ] 4.4 执行一次完整 smoke 验证（单人串行，预期 1-2 小时）
-- [ ] 4.5 将 smoke checklist 和验证结果 commit 到仓库
+- [x] 4.4 执行一次完整 smoke 验证（单人串行，预期 1-2 小时）
+- [x] 4.5 将 smoke checklist 和验证结果 commit 到仓库
 
 ---
 

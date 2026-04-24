@@ -1,0 +1,8 @@
+# review-reminder-v1
+schema: openspec.change/v1
+status: proposed
+capabilities:
+  - history-and-review-loop
+created_by: 张烜荣
+created_at: 2026-04-22
+description: AppShell 角标 + ReviewsPage 过期强调 + HomePage 排序强化，让用户在任意页面感知未完成复盘量。

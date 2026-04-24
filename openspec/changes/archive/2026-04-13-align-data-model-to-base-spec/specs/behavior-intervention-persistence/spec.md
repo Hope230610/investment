@@ -1,8 +1,4 @@
-## Purpose
-
-定义行为干预的独立存储结构，支持冷静期追踪、用户确认反馈和动作归因，解决以内嵌 JSON 方式存储干预导致的查询困难和审计缺失问题。
-
-## Requirements
+## ADDED Requirements
 
 ### Requirement: 行为干预必须独立持久化
 系统 SHALL 在识别到高风险行为偏差时将干预写入 `behavior_interventions` 表。干预 MUST 至少记录干预类型（`behavior_type`）、严重程度（`severity`）和触发时间，且系统 MUST 支持按用户 ID 查询历史干预记录。
