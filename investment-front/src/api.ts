@@ -243,7 +243,25 @@ export async function postLearningFeedback(data: LearningFeedbackPayload) {
 }
 
 /**
- * 更新复盘任务的 review_result 并标记为已完成
+ * 通过整数 review_task_id 更新复盘任务并标记为已完成
+ * PATCH /api/v1/reviews/:review_task_id
+ */
+export async function patchReviewTask(
+  reviewTaskId: number,
+  reviewResult: Record<string, unknown>,
+) {
+  return apiRequest<unknown>(
+    `/api/v1/reviews/${reviewTaskId}`,
+    {
+      method: 'PATCH',
+      auth: true,
+      body: { review_result: reviewResult, mark_completed: true },
+    },
+  );
+}
+
+/**
+ * 通过 analysis_task_id 更新复盘任务并标记为已完成
  * PATCH /api/v1/reviews/by-analysis/:analysis_task_id
  */
 export async function patchReviewResult(

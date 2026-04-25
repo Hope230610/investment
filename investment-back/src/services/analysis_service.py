@@ -115,7 +115,11 @@ class AnalysisService:
 
         # 对于 post_trade_review，同步创建 ReviewTask，
         # 让用户提交后能在复盘记录页立即看到这条记录（Fix 3）
-        if analysis_data.scenario.value == "post_trade_review":
+        # 但如果携带了 pending_review_task_id，说明是从 ReviewsPage 入口来的，
+        # 原始 reminder 已在 ResultPage 被完成，不创建新 ReviewTask
+        scenario_payload = analysis_data.scenario_payload or {}
+        skip_review_task = scenario_payload.get("pending_review_task_id")
+        if analysis_data.scenario.value == "post_trade_review" and not skip_review_task:
             stock_name = ""
             stock = self.db.query(StockModel).filter(
                 StockModel.stock_id == analysis_data.stock_id

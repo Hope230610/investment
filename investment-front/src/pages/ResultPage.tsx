@@ -138,7 +138,9 @@ export default function ResultPage() {
   const feedbackSessionDismissedRef = useRef(false);
 
   // Retrieve review form data passed from PostTradeInput
-  const reviewFormData = (location.state as { reviewFormData?: import('../utils/learningFeedback').ReviewFormData })?.reviewFormData;
+  const reviewFormData = (location.state as { reviewFormData?: import('../utils/learningFeedback').ReviewFormData; pendingReviewTaskId?: string })?.reviewFormData;
+  // 来自 ReviewsPage "去复盘" 的原始 pending review（如果用户是走提醒入口进来的）
+  const pendingReviewTaskId = (location.state as { pendingReviewTaskId?: string })?.pendingReviewTaskId;
 
   // LocalStorage keys for feedback card tracking
   const feedbackDismissKey = `feedback_dismissed_${id}`;
@@ -231,7 +233,7 @@ export default function ResultPage() {
       });
 
       // 2. 更新 ReviewTask.review_result 并标记为已完成
-      await patchReviewResult(id, {
+      await patchReviewResult(pendingReviewTaskId || id, {
         action_taken: reviewFormData?.actionTaken,
         outcome_summary: reviewFormData?.outcomeSummary,
         plan_deviation: reviewFormData?.planDeviation,
@@ -258,7 +260,7 @@ export default function ResultPage() {
     // 将 ReviewTask 标记为已完成（用户已"稍后"处理，等于承认了这次复盘）
     if (id) {
       try {
-        await patchReviewResult(id, { review_result: null, mark_completed: true });
+        await patchReviewResult(pendingReviewTaskId || id, { review_result: null, mark_completed: true });
       } catch {
         // 非阻塞，localStorage 标记仍生效
       }

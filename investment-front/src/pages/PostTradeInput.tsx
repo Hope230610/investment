@@ -23,6 +23,7 @@ export default function PostTradeInput() {
   const [searchParams] = useSearchParams();
   const stockId = searchParams.get('stock_id') || '';
   const stockName = searchParams.get('stock_name') || '';
+  const pendingReviewTaskId = searchParams.get('pending_review_task_id') || '';
 
   const [action, setAction] = useState('');
   const [outcome, setOutcome] = useState('');
@@ -58,6 +59,8 @@ export default function PostTradeInput() {
           behavior_patterns: behaviorPatterns,
           // Pass emotion level if available from context
           emotion_level: 3,
+          // 如果是从 ReviewsPage 入口来的，携带原始 review task UUID
+          pending_review_task_id: pendingReviewTaskId || undefined,
         },
       });
 
@@ -71,7 +74,7 @@ export default function PostTradeInput() {
         emotionLevel: 3,
       };
 
-      navigate(`/analysis/${data.id}/result`, { state: { reviewFormData } });
+      navigate(`/analysis/${data.id}/result`, { state: { reviewFormData, pendingReviewTaskId } });
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : '创建复盘失败');
     } finally {

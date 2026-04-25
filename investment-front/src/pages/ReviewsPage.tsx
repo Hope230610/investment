@@ -91,7 +91,7 @@ export default function ReviewsPage() {
                   <span className="text-xs">{new Date(task.review_at).toLocaleDateString()}</span>
                 </div>
                 <Link
-                  to={`/analysis/post-trade?stock_id=${task.stock_id || ''}&stock_name=${encodeURIComponent(task.stock_name)}`}
+                  to={`/analysis/post-trade?stock_id=${task.stock_id || ''}&stock_name=${encodeURIComponent(task.stock_name)}&pending_review_task_id=${task.analysis_task_id}`}
                   className="px-4 py-2 bg-ink text-white rounded-xl text-xs font-bold"
                 >
                   去复盘

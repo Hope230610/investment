@@ -24,6 +24,17 @@ export type InterventionActionTaken = 'continued' | 'delayed' | 'cancelled' | 'l
 export type AttributionScore = 'low' | 'medium' | 'high';
 export type DataSourceKey = 'quote' | 'announcement' | 'profile_snapshot' | 'manual_input';
 
+/** 用户操作埋点类型枚举
+ * 命名规范已对齐：ai_investment_decision_system_ui_structure_design.md
+ * 主维护点：structure/db_types.ts
+ */
+export type UserActionType =
+  | 'scenario_selected'
+  | 'analysis_submitted'
+  | 'behavior_intervention_shown'
+  | 'cooldown_started'
+  | 'review_task_completed';
+
 // ============================================
 // 用户相关
 // ============================================
@@ -242,7 +253,7 @@ export interface UserAction {
   id: UUID;
   user_id: UUID;
   created_at: Timestamp;
-  action_type: string;
+  action_type: UserActionType;
   action_payload: JsonB | null;
   stock_id: UUID | null;
   analysis_task_id: UUID | null;

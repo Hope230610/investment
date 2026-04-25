@@ -384,13 +384,17 @@ def process_analysis_v2(task_uuid_str: str):
 
         # === 4. 创建 ReviewTask（使用 analysis_task_id） ===
         review_at = _to_storage_datetime(result.decision_card.review_at)
-        if review_at:
+        scenario_str = task.scenario.value if hasattr(task.scenario, "value") else task.scenario
+        should_skip_review_task = (
+            scenario_str == "post_trade_review"
+            and scenario_payload.get("pending_review_task_id")
+        )
+        if review_at and not should_skip_review_task:
             review_task = (
                 db.query(ReviewTaskModel)
                 .filter(ReviewTaskModel.analysis_task_id == task.id)
                 .first()
             )
-            scenario_str = task.scenario.value if hasattr(task.scenario, "value") else task.scenario
             if not review_task:
                 review_task = ReviewTaskModel(
                     user_id=task.user_id,
@@ -410,6 +414,8 @@ def process_analysis_v2(task_uuid_str: str):
                 if review_at <= datetime.now()
                 else ReviewTaskStatus.PENDING
             )
+        else:
+            logger.info("review_task_skipped_by_pending_resolution", task_id=str(task.id))
 
         db.commit()
         logger.info("analysis_v2_completed", task_id=str(task.id))
