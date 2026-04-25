@@ -1,12 +1,9 @@
 ## What Capabilities Change
 
-### New Capabilities
-
-- `learning-feedback-card`: 画像学习闭环的前端反馈展示层。用户在 post-trade-review 提交后，看到系统的"学习结果"（行为标签更新、判断质量、情绪趋势），并通过确认机制参与画像建设。底层依赖 `profile-learning-closed-loop` 后端接口（Phase 2）。
-
 ### Modified Capabilities
 
 - `post-trade-review`: 复盘提交后新增反馈卡交互，用户在收到分析结果后 800ms 自动弹出。流程从"提交 → 结果页"扩展为"提交 → 结果页 → 反馈卡（三按钮）→ 确认/稍后/忽略"。
+- `user-profile`: 画像写入从一次性静态字段扩展为“行为标签确认写入 + learning history 查询”，供 `ResultPage` 与 `ProfilePage` 共用。
 
 ## Capabilities
 
@@ -105,14 +102,25 @@ Level: ≥80% 绿 | 60-80% 黄 | <60% 红
 ```
 规则引擎（前端计算）:
 
-  intent = 'buy'/'add_position' AND trigger = '连续上涨'/'看到大涨'
-    → 新增「追涨倾向」
+  intent 字段（优先）:
+    intent = 'buy'/'add_position' AND trigger = '连续上涨'/'看到大涨'
+      → 新增「追涨倾向」
 
-  intent = 'sell'/'reduce_position' AND trigger = '快速下跌'/'恐慌性抛盘'
-    → 新增「恐慌卖出」
+    intent = 'sell'/'reduce_position' AND trigger = '快速下跌'/'恐慌性抛盘'
+      → 新增「恐慌卖出」
+
+  action_taken 字段（回退，intent 为空时使用）:
+    action_taken = 'buy'/'add' AND trigger = '连续上涨'/'看到大涨'
+      → 新增「追涨倾向」
+
+    action_taken = 'sell'/'reduce' AND trigger = '快速下跌'/'恐慌性抛盘'
+      → 新增「恐慌卖出」
 
   兜底: 用户勾选的行为模式 → 来源标记为「本次复盘确认」
 ```
+
+已在 `design.md` v2 更新，`learningFeedback.test.ts` 38 个用例全部通过（含 6 个 `action_taken` 回退场景）。
+
 
 ### Emotion Sparkline
 
@@ -135,7 +143,8 @@ investment-front/src/
 ├── components/
 │   └── LearningFeedbackCard.tsx    # 组件（EmotionSparkline, JudgmentBar, TagUpdateRow, TrendBadge）
 ├── utils/
-│   └── learningFeedback.ts          # computeLearningFeedback + types
+│   ├── learningFeedback.ts          # computeLearningFeedback + types
+│   └── learningFeedback.test.ts     # 38 个用例（含 action_taken 回退场景）
 └── pages/
     ├── PostTradeInput.tsx          # 传递 reviewFormData via location.state
     └── ResultPage.tsx              # 集成触发逻辑
@@ -172,13 +181,14 @@ interface TagUpdate {
 
 ## Verified Implementation
 
-已在 `6ee2677` + `0b379f9` + 本次提交，TypeScript 零错误，Vite build 零警告：
+已在 `6ee2677` + `0b379f9` + `e6b1db7` + 本次提交完成门禁收口；当前前端验证状态为：`npm run lint` 通过、`npm run build` 通过（仍有现存 chunk size warning）、`vitest` 46 个用例全部通过。
 
 ```
 investment-front/src/components/LearningFeedbackCard.tsx   +468 (+新三按钮 + isHardToTell中性样式)
 investment-front/src/pages/PostTradeInput.tsx              +21
 investment-front/src/pages/ResultPage.tsx                   +119 (+localStorage追踪)
 investment-front/src/utils/learningFeedback.ts             +206 (+含50分 + 下限兜底 + 难以区分处理)
+investment-front/src/utils/learningFeedback.test.ts        +120 (+46个单元测试，含 localStorage 语义与 null safety)
 ```
 
 关键验证点：
@@ -193,3 +203,6 @@ investment-front/src/utils/learningFeedback.ts             +206 (+含50分 + 下
 - [x] "难以区分"判断质量区显示灰色中性样式 + 说明文字 + breakdown 100% 柱
 - [x] "难以区分"不计入历史聚合，不污染百分比计算
 - [x] 数据 < 3 次时显示"数据积累中"，隐藏 delta / trend
+- [x] `action_taken` 字段作为 `intent` 的回退，追涨/恐慌标签推断在两种场景均生效
+- [x] `intent` 字段优先于 `action_taken`，两者同时存在时以 `intent` 为准
+- [x] `learningFeedback.test.ts` 中 `beforeEach` 与 `localStorage` stub 已通过 TypeScript 类型检查，不再阻塞前端 `lint`

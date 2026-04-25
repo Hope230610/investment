@@ -1,9 +1,9 @@
 schema: spec-driven
 created: 2026-04-12
-status: in-review
+status: completed
 summary: |
-  画像学习闭环前端展示层 + Phase 2 后端接入 + Phase 3 用户可见化。
-  待执行 alembic upgrade head 后上线。
-phase_1: ✅ 已上线（commit 6ee2677, 0b379f9）
-phase_2: ✅ 已实现，待迁移（migration 008）
-phase_3: ✅ 已实现
+  画像学习闭环的前端反馈卡、后端 learning history 接口与画像页可视化均已实现。
+  当前前端 `lint` / `test` / `build` 门禁已收口；剩余 `alembic upgrade head` 与手动 E2E 验证。
+phase_1: ✅ 已实现并完成前端链路验证
+phase_2: ✅ 已实现，待目标环境迁移验证（migration 008）
+phase_3: ✅ 已实现，待端到端验收
