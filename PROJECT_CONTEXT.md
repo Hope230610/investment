@@ -28,7 +28,6 @@ F:\investment
 ├── PROJECT_SUMMARY.md
 ├── PROJECT_README.md
 ├── IMPLEMENTATION_PLAN.md
-├── DEPLOYMENT_GUIDE.md
 ├── start.bat
 └── start.sh
 ```
