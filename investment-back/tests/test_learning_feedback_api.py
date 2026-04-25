@@ -25,6 +25,10 @@ from httpx import ASGITransport, AsyncClient
 _back_root = Path(__file__).parent.parent
 sys.path.insert(0, str(_back_root))
 
+from tests._smoke_utils import enforce_test_db
+
+enforce_test_db()
+
 # Import the FastAPI app via investment-back/main.py
 from main import app  # noqa: E402
 

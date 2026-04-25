@@ -32,13 +32,13 @@ async function loginAs(page: Page) {
   await page.goto(`${BASE_URL}/login`);
   await page.getByPlaceholder('用户名').fill(TEST_USER);
   await page.getByPlaceholder('密码').fill(TEST_PASS);
-  await page.getByRole('button', { name: /登录|登录/i }).click();
+  await page.getByRole('button', { name: '进入系统' }).click();
   await page.waitForURL(url => !url.pathname.includes('login'));
 }
 
 async function waitForFeedbackCard(page: Page, timeout = 3000) {
-  // The card appears 800ms after result loads
-  await page.waitForSelector('[class*="bottom-sheet"], [class*="feedback"]', { timeout });
+  // The card uses role="dialog" per LearningFeedbackCard.tsx
+  await page.waitForSelector('[role="dialog"]', { timeout });
 }
 
 // ---------------------------------------------------------------------------
@@ -78,11 +78,12 @@ test('feedback card shows on post-trade-review result page', async ({ page }) =>
   // Feedback card should appear (800ms delay)
   try {
     await waitForFeedbackCard(page, 4000);
-    const card = page.locator('[class*="feedback"], [class*="learning"]').first();
+    const card = page.locator('[role="dialog"]').first();
     await expect(card).toBeVisible();
   } catch {
-    // Card may not show if dismissed/count >= 3 — mark as soft skip
-    test.skip('Feedback card did not appear (may be permanently dismissed)');
+    // Unexpected — card should appear after a fresh post-trade review.
+    // Fail the test rather than silently skipping.
+    throw new Error('Feedback card did not appear after review submission');
   }
 });
 
@@ -112,10 +113,10 @@ test('confirm button writes learning feedback to DB', async ({ page }) => {
     await page.waitForTimeout(2000);
 
     // Card should be gone after confirm
-    const card = page.locator('[class*="bottom-sheet"], [class*="feedback-card"]');
+    const card = page.locator('[role="dialog"]');
     await expect(card).toHaveCount(0, { timeout: 5000 });
   } catch {
-    test.skip('Card not visible — possibly dismissed or count exceeded');
+    throw new Error('Card not visible after confirm — feedback card should appear');
   }
 });
 
@@ -146,10 +147,10 @@ test('dismiss button permanently hides feedback card', async ({ page }) => {
     await page.reload();
     await page.waitForLoadState('networkidle');
 
-    const card = page.locator('[class*="bottom-sheet"], [class*="feedback-card"]');
+    const card = page.locator('[role="dialog"]');
     await expect(card).toHaveCount(0, { timeout: 3000 });
   } catch {
-    test.skip('Card not visible — possibly already dismissed');
+    throw new Error('Dismiss target card not visible — verify fresh session state');
   }
 });
 
@@ -176,7 +177,7 @@ test('later button increments show count, card reappears on next review', async 
     await page.waitForTimeout(500);
 
     // Card should close, count should be incremented
-    const card = page.locator('[class*="bottom-sheet"], [class*="feedback-card"]');
+    const card = page.locator('[role="dialog"]');
     await expect(card).toHaveCount(0);
 
     // On a second review, card should still appear (< 3 shows)
@@ -188,10 +189,10 @@ test('later button increments show count, card reappears on next review', async 
     await page.waitForURL(url => url.pathname.includes('/result'));
 
     await waitForFeedbackCard(page, 4000);
-    const card2 = page.locator('[class*="feedback"], [class*="learning"]').first();
+    const card2 = page.locator('[role="dialog"]').first();
     await expect(card2).toBeVisible();
   } catch {
-    test.skip('Card not visible in this session');
+    throw new Error('Later-button second-review card not visible — verify fresh session state');
   }
 });
 
