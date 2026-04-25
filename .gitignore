@@ -16,8 +16,6 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
-.mypy_cache/
-.ruff_cache/
 .venv/
 venv/
 
@@ -39,3 +37,22 @@ coverage/
 Thumbs.db
 .idea/
 .vscode/
+
+# ——————————————————————————————————
+# Managed zones: only track investment-front and investment-back
+# ——————————————————————————————————
+*
+
+# Negate the two managed directories
+!investment-front/
+!investment-back/
+
+# Inside them, re-exclude all generated / cache dirs
+investment-front/node_modules/
+investment-front/dist/
+investment-front/build/
+investment-back/__pycache__/
+investment-back/.pytest_cache/
+investment-back/.mypy_cache/
+investment-back/.ruff_cache/
+investment-back/.venv/
