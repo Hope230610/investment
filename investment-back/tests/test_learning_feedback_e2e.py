@@ -62,6 +62,81 @@ def db_engine():
     return engine
 
 
+def ensure_review_task_for_analysis(db_engine, analysis_task_id: str = REAL_ANALYSIS_UUID) -> int:
+    """Create or reset a review_task row so PATCH smoke tests assert real updates."""
+    from sqlalchemy import text
+
+    with db_engine.begin() as conn:
+        analysis = conn.execute(
+            text(
+                "SELECT at.user_id, at.stock_id, at.scenario, "
+                "COALESCE(s.stock_name, at.stock_id) AS stock_name "
+                "FROM analysis_tasks at "
+                "LEFT JOIN stocks s ON s.stock_id = at.stock_id "
+                "WHERE at.id = :analysis_task_id AND at.user_id = 1"
+            ),
+            {"analysis_task_id": analysis_task_id},
+        ).mappings().first()
+        assert analysis is not None, (
+            f"Missing analysis_tasks fixture for {analysis_task_id}; "
+            "PATCH smoke tests require a real analysis_task row in the test DB."
+        )
+
+        review_task_id = conn.execute(
+            text(
+                "SELECT id FROM review_tasks "
+                "WHERE analysis_task_id = :analysis_task_id AND user_id = :user_id "
+                "ORDER BY id ASC LIMIT 1"
+            ),
+            {
+                "analysis_task_id": analysis_task_id,
+                "user_id": analysis["user_id"],
+            },
+        ).scalar()
+
+        if review_task_id is None:
+            review_task_id = conn.execute(
+                text(
+                    "INSERT INTO review_tasks "
+                    "(user_id, analysis_task_id, stock_id, stock_name, scenario, "
+                    "review_at, status, review_result, created_at, updated_at) "
+                    "VALUES "
+                    "(:user_id, :analysis_task_id, :stock_id, :stock_name, :scenario, "
+                    "CURRENT_TIMESTAMP, 'PENDING', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) "
+                    "RETURNING id"
+                ),
+                {
+                    "user_id": analysis["user_id"],
+                    "analysis_task_id": analysis_task_id,
+                    "stock_id": analysis["stock_id"],
+                    "stock_name": analysis["stock_name"],
+                    "scenario": analysis["scenario"],
+                },
+            ).scalar_one()
+        else:
+            conn.execute(
+                text(
+                    "UPDATE review_tasks "
+                    "SET stock_id = :stock_id, "
+                    "stock_name = :stock_name, "
+                    "scenario = :scenario, "
+                    "review_at = CURRENT_TIMESTAMP, "
+                    "status = 'PENDING', "
+                    "review_result = NULL, "
+                    "updated_at = CURRENT_TIMESTAMP "
+                    "WHERE id = :review_task_id"
+                ),
+                {
+                    "review_task_id": review_task_id,
+                    "stock_id": analysis["stock_id"],
+                    "stock_name": analysis["stock_name"],
+                    "scenario": analysis["scenario"],
+                },
+            )
+
+    return int(review_task_id)
+
+
 # ---------------------------------------------------------------------------
 # Smoke 1: POST feedback writes emotion_history
 # ---------------------------------------------------------------------------
@@ -162,25 +237,23 @@ async def test_patch_review_by_analysis_sets_completed(client, auth_headers, db_
     """After PATCH with mark_completed=true, the review_task status should be COMPLETED."""
     from sqlalchemy import text
 
-    with db_engine.connect() as conn:
-        # Ensure there's a review_task for the test analysis UUID
-        conn.execute(
-            text("UPDATE review_tasks SET status = 'PENDING' WHERE analysis_task_id = :the_uuid"),
-            {"the_uuid": REAL_ANALYSIS_UUID},
-        )
-        conn.commit()
+    review_task_id = ensure_review_task_for_analysis(db_engine)
 
     resp = await client.patch(
         f"/api/v1/reviews/by-analysis/{REAL_ANALYSIS_UUID}",
         headers=auth_headers,
         json={"review_result": {"action_taken": "continued"}, "mark_completed": True},
     )
-    # 200 = updated; 404 = no review_task for this analysis (acceptable)
-    assert resp.status_code in (200, 404), f"Unexpected: {resp.status_code} {resp.text}"
+    assert resp.status_code == 200, f"Unexpected: {resp.status_code} {resp.text}"
+    body = resp.json()
+    assert body.get("status") in ("COMPLETED", "completed")
 
-    if resp.status_code == 200:
-        body = resp.json()
-        assert body.get("status") in ("COMPLETED", "completed")
+    with db_engine.connect() as conn:
+        status = conn.execute(
+            text("SELECT status FROM review_tasks WHERE id = :review_task_id"),
+            {"review_task_id": review_task_id},
+        ).scalar_one()
+        assert str(status).upper() == "COMPLETED"
 
 
 # ---------------------------------------------------------------------------
@@ -190,11 +263,12 @@ async def test_patch_review_by_analysis_sets_completed(client, auth_headers, db_
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_full_feedback_roundtrip(client, auth_headers):
+async def test_full_feedback_roundtrip(client, auth_headers, db_engine):
     """Complete loop: write feedback → read history → patch review."""
     from datetime import date
 
     today = str(date.today())
+    ensure_review_task_for_analysis(db_engine)
 
     # Step 1: POST feedback with real UUID (not random — avoids FK noise)
     payload = {
@@ -232,7 +306,7 @@ async def test_full_feedback_roundtrip(client, auth_headers):
         headers=auth_headers,
         json={"review_result": {}, "mark_completed": True},
     )
-    assert patch_resp.status_code in (200, 404), (
+    assert patch_resp.status_code == 200, (
         f"PATCH regressed: {patch_resp.status_code} {patch_resp.text}"
     )
 

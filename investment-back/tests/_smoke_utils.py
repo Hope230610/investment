@@ -23,7 +23,7 @@ def db_name_from_env_or_file() -> str:
         if env_path.exists():
             for line in env_path.read_text(encoding="utf-8").splitlines():
                 if line.startswith("DATABASE_URL="):
-                    url = line.split("=", 1)[1].strip()
+                    url = line.split("=", 1)[1].strip().strip("\"'")
                     break
     return url.split("/")[-1].split("?")[0].strip() if url else ""
 
@@ -39,7 +39,15 @@ def enforce_test_db():
     import that could load the real database session.
     """
     db = db_name_from_env_or_file()
-    if db and db.lower() not in KNOWN_TEST_DBS:
+    if not db:
+        raise RuntimeError(
+            "[TEST GUARD] Refusing to run data-modifying tests because the "
+            "database name could not be determined from DATABASE_URL or .env. "
+            "Set DATABASE_URL to a dedicated test database before running "
+            "these suites."
+        )
+
+    if db.lower() not in KNOWN_TEST_DBS:
         raise RuntimeError(
             f"[TEST GUARD] Refusing to run data-modifying tests against DB '{db}'. "
             "Rename the DB to contain 'test' or set DATABASE_URL to a dedicated "

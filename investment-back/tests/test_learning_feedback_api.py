@@ -33,6 +33,7 @@ enforce_test_db()
 from main import app  # noqa: E402
 
 SKIP_DB = os.environ.get("SKIP_DB", "false").lower() in ("1", "true", "yes")
+REAL_ANALYSIS_UUID = "4b8ca781-a3c7-4742-8b2b-1bf372fb2a5a"
 
 
 # ---------------------------------------------------------------------------
@@ -59,6 +60,89 @@ def auth_headers() -> dict[str, str]:
     # Requires DB to find a real user; falls back to token with user_id=1
     token = create_access_token({"sub": "1"})
     return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
+def db_engine():
+    """Direct SQLAlchemy engine for PATCH test setup."""
+    from src.db.session import engine
+
+    return engine
+
+
+def ensure_review_task_for_analysis(db_engine, analysis_task_id: str = REAL_ANALYSIS_UUID) -> int:
+    """Create or reset a review_task row so PATCH tests can assert a real update."""
+    from sqlalchemy import text
+
+    with db_engine.begin() as conn:
+        analysis = conn.execute(
+            text(
+                "SELECT at.user_id, at.stock_id, at.scenario, "
+                "COALESCE(s.stock_name, at.stock_id) AS stock_name "
+                "FROM analysis_tasks at "
+                "LEFT JOIN stocks s ON s.stock_id = at.stock_id "
+                "WHERE at.id = :analysis_task_id AND at.user_id = 1"
+            ),
+            {"analysis_task_id": analysis_task_id},
+        ).mappings().first()
+        assert analysis is not None, (
+            f"Missing analysis_tasks fixture for {analysis_task_id}; "
+            "PATCH tests require a real analysis_task row in the test DB."
+        )
+
+        review_task_id = conn.execute(
+            text(
+                "SELECT id FROM review_tasks "
+                "WHERE analysis_task_id = :analysis_task_id AND user_id = :user_id "
+                "ORDER BY id ASC LIMIT 1"
+            ),
+            {
+                "analysis_task_id": analysis_task_id,
+                "user_id": analysis["user_id"],
+            },
+        ).scalar()
+
+        if review_task_id is None:
+            review_task_id = conn.execute(
+                text(
+                    "INSERT INTO review_tasks "
+                    "(user_id, analysis_task_id, stock_id, stock_name, scenario, "
+                    "review_at, status, review_result, created_at, updated_at) "
+                    "VALUES "
+                    "(:user_id, :analysis_task_id, :stock_id, :stock_name, :scenario, "
+                    "CURRENT_TIMESTAMP, 'PENDING', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) "
+                    "RETURNING id"
+                ),
+                {
+                    "user_id": analysis["user_id"],
+                    "analysis_task_id": analysis_task_id,
+                    "stock_id": analysis["stock_id"],
+                    "stock_name": analysis["stock_name"],
+                    "scenario": analysis["scenario"],
+                },
+            ).scalar_one()
+        else:
+            conn.execute(
+                text(
+                    "UPDATE review_tasks "
+                    "SET stock_id = :stock_id, "
+                    "stock_name = :stock_name, "
+                    "scenario = :scenario, "
+                    "review_at = CURRENT_TIMESTAMP, "
+                    "status = 'PENDING', "
+                    "review_result = NULL, "
+                    "updated_at = CURRENT_TIMESTAMP "
+                    "WHERE id = :review_task_id"
+                ),
+                {
+                    "review_task_id": review_task_id,
+                    "stock_id": analysis["stock_id"],
+                    "stock_name": analysis["stock_name"],
+                    "scenario": analysis["scenario"],
+                },
+            )
+
+    return int(review_task_id)
 
 
 # ---------------------------------------------------------------------------
@@ -102,7 +186,7 @@ async def test_learning_history_requires_auth(client):
 
 VALID_FEEDBACK_PAYLOAD = {
     # Use a real UUID from the test database to avoid FK violations
-    "analysis_task_id": "4b8ca781-a3c7-4742-8b2b-1bf372fb2a5a",
+    "analysis_task_id": REAL_ANALYSIS_UUID,
     "tag_updates": [
         {"tag": "追涨倾向", "type": "add", "source": "本次复盘确认"}
     ],
@@ -151,23 +235,25 @@ async def test_post_feedback_requires_auth(client):
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_patch_review_by_analysis_task_id(client, auth_headers):
+async def test_patch_review_by_analysis_task_id(client, auth_headers, db_engine):
+    ensure_review_task_for_analysis(db_engine)
     payload = {
         "review_result": {"action_taken": "continued", "outcome_summary": "Test outcome"},
         "mark_completed": True,
     }
     resp = await client.patch(
-        "/api/v1/reviews/by-analysis/4b8ca781-a3c7-4742-8b2b-1bf372fb2a5a",
+        f"/api/v1/reviews/by-analysis/{REAL_ANALYSIS_UUID}",
         headers=auth_headers,
         json=payload,
     )
-    assert resp.status_code in (200, 404), f"Unexpected status {resp.status_code}: {resp.text}"
+    assert resp.status_code == 200, f"Unexpected status {resp.status_code}: {resp.text}"
+    assert resp.json().get("status") in ("COMPLETED", "completed")
 
 
 @pytest.mark.asyncio
 async def test_patch_review_requires_auth(client):
     resp = await client.patch(
-        "/api/v1/reviews/by-analysis/4b8ca781-a3c7-4742-8b2b-1bf372fb2a5a",
+        f"/api/v1/reviews/by-analysis/{REAL_ANALYSIS_UUID}",
         json={"review_result": {}, "mark_completed": True},
     )
     assert resp.status_code in (401, 403)
@@ -178,14 +264,16 @@ async def test_patch_review_requires_auth(client):
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_patch_review_by_numeric_id(client, auth_headers):
+async def test_patch_review_by_numeric_id(client, auth_headers, db_engine):
+    review_task_id = ensure_review_task_for_analysis(db_engine)
     payload = {"review_result": {"action_taken": "delayed"}, "mark_completed": True}
     resp = await client.patch(
-        "/api/v1/reviews/1",
+        f"/api/v1/reviews/{review_task_id}",
         headers=auth_headers,
         json=payload,
     )
-    assert resp.status_code in (200, 404, 422), f"Unexpected status {resp.status_code}"
+    assert resp.status_code == 200, f"Unexpected status {resp.status_code}: {resp.text}"
+    assert resp.json().get("id") == review_task_id
 
 
 @pytest.mark.asyncio

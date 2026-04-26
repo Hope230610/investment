@@ -23,6 +23,7 @@ import { test, expect, type Page } from '@playwright/test';
 const BASE_URL = process.env['E2E_BASE_URL'] ?? 'http://localhost:5173';
 const TEST_USER = process.env['E2E_USER'] ?? 'testuser';
 const TEST_PASS = process.env['E2E_PASS'] ?? 'testpassword123';
+const ACCESS_TOKEN_KEY = 'ai_investment_access_token';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -39,6 +40,34 @@ async function loginAs(page: Page) {
 async function waitForFeedbackCard(page: Page, timeout = 3000) {
   // The card uses role="dialog" per LearningFeedbackCard.tsx
   await page.waitForSelector('[role="dialog"]', { timeout });
+}
+
+async function getAccessToken(page: Page) {
+  return page.evaluate((tokenKey) => window.localStorage.getItem(tokenKey), ACCESS_TOKEN_KEY);
+}
+
+async function fetchLearningHistory(page: Page) {
+  const token = await getAccessToken(page);
+  if (!token) {
+    throw new Error('Missing access token after login');
+  }
+
+  return page.evaluate(
+    async ({ baseUrl, accessToken }) => {
+      const response = await fetch(`${baseUrl}/api/v1/user/profile/learning-history?days=7`, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      const body = await response.json();
+      return {
+        status: response.status,
+        body,
+      };
+    },
+    { baseUrl: BASE_URL, accessToken: token },
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -95,7 +124,7 @@ test('confirm button writes learning feedback to DB', async ({ page }) => {
   await loginAs(page);
 
   // Go to post-trade directly (bypass ReviewsPage for simpler path)
-  await page.goto(`${BASE_URL}/analysis/post-trade?stock_id=1&stock_name=贵州茅台`);
+  await page.goto(`${BASE_URL}/analysis/post-trade?stock_id=SH600519&stock_name=贵州茅台`);
   await page.waitForLoadState('networkidle');
 
   await page.getByPlaceholder(/操作行为|action/i).first().fill('continued');
@@ -109,12 +138,26 @@ test('confirm button writes learning feedback to DB', async ({ page }) => {
   try {
     await waitForFeedbackCard(page, 4000);
     const confirmBtn = page.getByRole('button', { name: /确认|confirm/i }).first();
+    const feedbackResponsePromise = page.waitForResponse((response) =>
+      response.url().includes('/api/v1/user/profile/learning-feedback')
+      && response.request().method() === 'POST',
+    );
+
     await confirmBtn.click();
-    await page.waitForTimeout(2000);
+    const feedbackResponse = await feedbackResponsePromise;
+    expect(feedbackResponse.status()).toBe(200);
 
     // Card should be gone after confirm
     const card = page.locator('[role="dialog"]');
     await expect(card).toHaveCount(0, { timeout: 5000 });
+
+    const history = await fetchLearningHistory(page);
+    expect(history.status).toBe(200);
+
+    const today = new Date().toISOString().slice(0, 10);
+    const hasTodayEntry = Array.isArray(history.body?.emotion_history)
+      && history.body.emotion_history.some((entry: { date?: string }) => entry.date?.startsWith(today));
+    expect(hasTodayEntry).toBeTruthy();
   } catch {
     throw new Error('Card not visible after confirm — feedback card should appear');
   }
@@ -128,7 +171,7 @@ test('dismiss button permanently hides feedback card', async ({ page }) => {
   await loginAs(page);
 
   // Use a fresh stock to avoid dismissed state
-  await page.goto(`${BASE_URL}/analysis/post-trade?stock_id=2&stock_name=比亚迪`);
+  await page.goto(`${BASE_URL}/analysis/post-trade?stock_id=SZ002594&stock_name=比亚迪`);
   await page.waitForLoadState('networkidle');
 
   await page.getByPlaceholder(/操作行为|action/i).first().fill('delayed');
@@ -161,7 +204,7 @@ test('dismiss button permanently hides feedback card', async ({ page }) => {
 test('later button increments show count, card reappears on next review', async ({ page }) => {
   await loginAs(page);
 
-  await page.goto(`${BASE_URL}/analysis/post-trade?stock_id=3&stock_name=宁德时代`);
+  await page.goto(`${BASE_URL}/analysis/post-trade?stock_id=SZ300750&stock_name=宁德时代`);
   await page.waitForLoadState('networkidle');
 
   await page.getByPlaceholder(/操作行为|action/i).first().fill('cancelled');
@@ -181,7 +224,7 @@ test('later button increments show count, card reappears on next review', async 
     await expect(card).toHaveCount(0);
 
     // On a second review, card should still appear (< 3 shows)
-    await page.goto(`${BASE_URL}/analysis/post-trade?stock_id=4&stock_name=招商银行`);
+    await page.goto(`${BASE_URL}/analysis/post-trade?stock_id=SH600036&stock_name=招商银行`);
     await page.waitForLoadState('networkidle');
     await page.getByPlaceholder(/操作行为|action/i).first().fill('continued');
     await page.getByPlaceholder(/结果总结|outcome/i).first().fill('Second review');
