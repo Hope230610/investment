@@ -3,13 +3,16 @@ from contextvars import ContextVar
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
 from starlette.middleware.base import BaseHTTPMiddleware
 import structlog
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from src.api.v1 import api_router
 from src.core.config import get_settings
 from src.core.logging import setup_logging
 from src.db.session import Base, engine, ensure_database_exists
+from src.schemas.common import ErrorDetail, ErrorResponse
 
 settings = get_settings()
 logger = setup_logging(debug=settings.DEBUG)
@@ -80,17 +83,74 @@ async def log_requests(request: Request, call_next):
         query=dict(request.query_params),
     )
     log.info("incoming_request")
-
-    try:
-        response = await call_next(request)
-        log.bind(status_code=response.status_code).info("request_complete")
-        return response
-    except Exception as exc:  # pragma: no cover - defensive logging
-        log.bind(error=str(exc)).error("request_error")
-        return JSONResponse(status_code=500, content={"message": "Internal server error"})
+    response = await call_next(request)
+    log.bind(status_code=response.status_code).info("request_complete")
+    return response
 
 
 app.include_router(api_router, prefix=settings.API_PREFIX)
+
+
+# ─── Global exception handlers ─────────────────────────────────────────────────
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    """Convert all HTTPException (including FastAPI's) to unified error structure."""
+    request_id = _request_id_var.get()
+    body = ErrorResponse(error=ErrorDetail(
+        code=f"HTTP_{exc.status_code}",
+        message=str(exc.detail) if exc.detail else f"HTTP {exc.status_code}",
+        request_id=request_id,
+        retryable=exc.status_code >= 500,
+    ))
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=body.model_dump(),
+        headers=dict(exc.headers) if exc.headers else {},
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def request_validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Convert request validation failures to the unified API error contract."""
+    request_id = _request_id_var.get()
+    body = ErrorResponse(error=ErrorDetail(
+        code="REQUEST_VALIDATION_ERROR",
+        message=_format_validation_error(exc),
+        request_id=request_id,
+        retryable=False,
+    ))
+    return JSONResponse(status_code=422, content=body.model_dump())
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    """Catch-all: convert unexpected exceptions to unified error structure."""
+    request_id = _request_id_var.get()
+    body = ErrorResponse(error=ErrorDetail(
+        code="INTERNAL_ERROR",
+        message="An unexpected error occurred",
+        request_id=request_id,
+        retryable=True,
+    ))
+    return JSONResponse(status_code=500, content=body.model_dump())
+
+
+def _format_validation_error(exc: RequestValidationError) -> str:
+    errors = exc.errors()
+    if not errors:
+        return "请求参数校验失败"
+
+    messages: list[str] = []
+    for error in errors[:3]:
+        loc = ".".join(str(part) for part in error.get("loc", []) if part != "body")
+        detail = str(error.get("msg") or "字段不合法")
+        messages.append(f"{loc}: {detail}" if loc else detail)
+
+    if len(errors) > 3:
+        messages.append(f"另有 {len(errors) - 3} 个字段需要检查")
+
+    return "请求参数校验失败：" + "；".join(messages)
 
 
 @app.get("/health")

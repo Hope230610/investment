@@ -15,7 +15,7 @@ export interface UnifiedErrorResponse {
 
 /** 旧 detail 风格（向后兼容，短期保留） */
 interface LegacyErrorDetail {
-  detail: string;
+  detail: unknown;
 }
 
 export class ApiError extends Error {
@@ -84,8 +84,9 @@ function parseErrorPayload(
   // 旧 detail 风格（向后兼容，短期保留）
   if (payload && typeof payload === 'object' && 'detail' in payload) {
     const detail = (payload as LegacyErrorDetail).detail;
+    const message = formatLegacyDetail(detail);
     return {
-      message: typeof detail === 'string' ? detail : 'An error occurred',
+      message,
       code: `HTTP_${status}`,
       retryable: false,
     };
@@ -96,6 +97,33 @@ function parseErrorPayload(
     code: `HTTP_${status}`,
     retryable: false,
   };
+}
+
+function formatLegacyDetail(detail: unknown): string {
+  if (typeof detail === 'string') return detail;
+
+  if (Array.isArray(detail)) {
+    const messages = detail
+      .slice(0, 3)
+      .map((item) => {
+        if (!item || typeof item !== 'object') return null;
+        const obj = item as { loc?: unknown; msg?: unknown };
+        const loc = Array.isArray(obj.loc)
+          ? obj.loc.filter((part) => part !== 'body').join('.')
+          : '';
+        const msg = typeof obj.msg === 'string' ? obj.msg : '';
+        if (!msg) return null;
+        return loc ? `${loc}: ${msg}` : msg;
+      })
+      .filter(Boolean);
+    if (messages.length > 0) return `请求参数校验失败：${messages.join('；')}`;
+  }
+
+  if (detail && typeof detail === 'object' && 'message' in detail) {
+    return String((detail as { message?: unknown }).message || 'An error occurred');
+  }
+
+  return 'An error occurred';
 }
 
 export async function apiRequest<T>(url: string, options: ApiRequestOptions = {}): Promise<T> {
@@ -278,14 +306,21 @@ export async function patchReviewResult(
   );
 }
 
-// Notifications
+// ─── 提醒中心 ───────────────────────────────────────────────────────────────────
 
-/** GET /api/v1/notifications */
+/**
+ * 获取完整提醒列表（聚合：复盘提醒 + 观察池异动 + 分析失效）
+ * GET /api/v1/notifications
+ */
 export function getNotifications() {
   return apiGet<import('./types').NotificationListResponse>('/api/v1/notifications');
 }
 
-/** GET /api/v1/notifications/summary */
+/**
+ * 获取提醒摘要（轻量接口，用于 Tab Badge 数字）
+ * GET /api/v1/notifications/summary
+ */
 export function getNotificationSummary() {
   return apiGet<import('./types').NotificationSummary>('/api/v1/notifications/summary');
 }
+
