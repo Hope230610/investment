@@ -369,3 +369,36 @@ export interface UserAction {
   page_path: string | null;
   user_agent: string | null;
 }
+
+// Notifications
+
+export type NotificationType = 'review_reminder' | 'watchlist_alert' | 'analysis_invalidation';
+export type NotificationUrgency = 'overdue' | 'due_soon' | 'normal' | 'high';
+
+export interface NotificationItem {
+  id: string;
+  type: NotificationType;
+  title: string;
+  description: string;
+  urgency: NotificationUrgency;
+  stock_id: string | null;
+  stock_name: string | null;
+  action_url: string | null;
+  created_at: string;
+  metadata?: Record<string, unknown> | null;
+}
+
+export interface NotificationSummary {
+  total: number;
+  overdue_count: number;
+  due_soon_count: number;
+  watchlist_alert_count: number;
+  invalidation_count: number;
+}
+
+export interface NotificationListResponse {
+  notifications: NotificationItem[];
+  total: number;
+  unread_count: number;
+  summary: NotificationSummary;
+}

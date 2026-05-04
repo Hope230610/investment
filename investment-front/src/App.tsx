@@ -5,12 +5,12 @@
 
 import React, { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, Navigate, useLocation } from 'react-router-dom';
-import { Home, LayoutGrid, History, User, ChevronLeft, Star } from 'lucide-react';
+import { Home, History, User, ChevronLeft, Star, Bell } from 'lucide-react';
 
 import { AuthProvider, RequireAuth } from './auth-context';
-import { cn, computeUnfinishedReviews } from './utils';
-import { apiGet } from './api';
-import type { ReviewTask } from './types';
+import { cn } from './utils';
+import { getNotificationSummary } from './api';
+import type { NotificationSummary } from './types';
 
 import HomePage from './pages/HomePage';
 import LoginPage from './pages/LoginPage';
@@ -24,6 +24,7 @@ import ResultPage from './pages/ResultPage';
 import ReviewsPage from './pages/ReviewsPage';
 import RecordsPage from './pages/RecordsPage';
 import WatchlistPage from './pages/WatchlistPage';
+import NotificationsPage from './pages/NotificationsPage';
 
 function AppShell({ children }: { children: React.ReactNode }) {
   const location = useLocation();
@@ -31,26 +32,26 @@ function AppShell({ children }: { children: React.ReactNode }) {
   const isInputPage = location.pathname.includes('/analysis/') && !isResultPage;
   const isLoginPage = location.pathname === '/login';
 
-  const [unfinishedReviews, setUnfinishedReviews] = useState<ReviewTask[]>([]);
+  const [notifSummary, setNotifSummary] = useState<NotificationSummary | null>(null);
 
-  const MAIN_NAV_PATHS = ['/', '/watchlist', '/reviews', '/records', '/me'];
+  const MAIN_NAV_PATHS = ['/', '/watchlist', '/notifications', '/records', '/me'];
 
-  const fetchUnfinishedReviews = () => {
-    apiGet<ReviewTask[]>('/api/v1/reviews')
-      .then((data) => setUnfinishedReviews(computeUnfinishedReviews(data)))
-      .catch(() => setUnfinishedReviews([]));
+  const fetchNotifSummary = () => {
+    getNotificationSummary()
+      .then(setNotifSummary)
+      .catch(() => setNotifSummary(null));
   };
 
-  // Refresh when returning to any main nav page (e.g. after completing a review)
+  // Refresh when returning to any main nav page
   useEffect(() => {
     if (MAIN_NAV_PATHS.some((p) => location.pathname === p)) {
-      fetchUnfinishedReviews();
+      fetchNotifSummary();
     }
   }, [location.pathname]);
 
-  // Refresh when window regains focus (covers tab-switch scenario)
+  // Refresh when window regains focus
   useEffect(() => {
-    const onFocus = () => fetchUnfinishedReviews();
+    const onFocus = () => fetchNotifSummary();
     window.addEventListener('focus', onFocus);
     return () => window.removeEventListener('focus', onFocus);
   }, []);
@@ -58,7 +59,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
   const navItems = [
     { path: '/', label: '首页', icon: Home },
     { path: '/watchlist', label: '观察', icon: Star },
-    { path: '/reviews', label: '复盘', icon: LayoutGrid },
+    { path: '/notifications', label: '提醒', icon: Bell },
     { path: '/records', label: '记录', icon: History },
     { path: '/me', label: '我的', icon: User },
   ];
@@ -88,9 +89,12 @@ function AppShell({ children }: { children: React.ReactNode }) {
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = location.pathname === item.path;
-            const isReviews = item.path === '/reviews';
-            const count = isReviews ? unfinishedReviews.length : 0;
-            const hasExpired = isReviews && unfinishedReviews.some((t) => t.status === 'expired');
+            const isNotifications = item.path === '/notifications';
+            // 提醒总数（overdue + due_soon）作为 badge
+            const unreadCount = isNotifications
+              ? (notifSummary?.overdue_count ?? 0) + (notifSummary?.due_soon_count ?? 0)
+              : 0;
+            const hasUrgent = isNotifications && (notifSummary?.overdue_count ?? 0) > 0;
 
             return (
               <Link
@@ -103,14 +107,14 @@ function AppShell({ children }: { children: React.ReactNode }) {
               >
                 <div className="relative">
                   <Icon size={20} strokeWidth={isActive ? 2.5 : 2} />
-                  {count > 0 && (
+                  {unreadCount > 0 && (
                     <span
                       className={cn(
                         'absolute -top-1.5 -right-2 min-w-[16px] h-4 flex items-center justify-center rounded-full text-[9px] font-bold text-white px-1',
-                        hasExpired ? 'bg-red-500' : 'bg-amber-500',
+                        hasUrgent ? 'bg-red-500' : 'bg-amber-500',
                       )}
                     >
-                      {count > 99 ? '99+' : count}
+                      {unreadCount > 99 ? '99+' : unreadCount}
                     </span>
                   )}
                 </div>
@@ -140,6 +144,7 @@ export default function App() {
             <Route path="/analysis/pre-trade" element={<RequireAuth><PreTradeInput /></RequireAuth>} />
             <Route path="/analysis/post-trade" element={<RequireAuth><PostTradeInput /></RequireAuth>} />
             <Route path="/analysis/:id/result" element={<RequireAuth><ResultPage /></RequireAuth>} />
+            <Route path="/notifications" element={<RequireAuth><NotificationsPage /></RequireAuth>} />
             <Route path="/reviews" element={<RequireAuth><ReviewsPage /></RequireAuth>} />
             <Route path="/records" element={<RequireAuth><RecordsPage /></RequireAuth>} />
             <Route path="*" element={<Navigate to="/" replace />} />

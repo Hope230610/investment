@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertCircle, History, Search, ShieldCheck, Star, UserCircle } from 'lucide-react';
+import { AlertCircle, AlertTriangle, Bell, History, Search, ShieldCheck, Star, UserCircle } from 'lucide-react';
 
-import { apiGet, getWatchlistItems } from '../api';
-import type { AnalysisRecord, ReviewTask, UserProfile, WatchlistApiItem } from '../types';
-import { SCENARIOS, computeUnfinishedReviews, sortUnfinishedReviews } from '../utils';
+import { apiGet, getWatchlistItems, getNotifications } from '../api';
+import type { AnalysisRecord, ReviewTask, UserProfile, WatchlistApiItem, NotificationListResponse, NotificationItem } from '../types';
+import { SCENARIOS, computeUnfinishedReviews, sortUnfinishedReviews, cn } from '../utils';
 
 
 export default function HomePage() {
@@ -12,15 +12,17 @@ export default function HomePage() {
   const [reviews, setReviews] = useState<ReviewTask[]>([]);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [watchlist, setWatchlist] = useState<WatchlistApiItem[]>([]);
+  const [notifications, setNotifications] = useState<NotificationListResponse | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
     const loadHomeData = async () => {
-      const [recordsResult, reviewsResult, profileResult] = await Promise.allSettled([
+      const [recordsResult, reviewsResult, profileResult, notifResult] = await Promise.allSettled([
         apiGet<AnalysisRecord[]>('/api/v1/analysis'),
         apiGet<ReviewTask[]>('/api/v1/reviews'),
         apiGet<UserProfile>('/api/v1/user/profile'),
+        getNotifications(),
       ]);
 
       if (cancelled) {
@@ -37,6 +39,10 @@ export default function HomePage() {
 
       if (profileResult.status === 'fulfilled') {
         setProfile(profileResult.value);
+      }
+
+      if (notifResult.status === 'fulfilled') {
+        setNotifications(notifResult.value);
       }
     };
 
@@ -100,6 +106,86 @@ export default function HomePage() {
             ))}
           </div>
         </Link>
+      )}
+
+      {notifications && notifications.summary.total > 0 && (
+        <section className="space-y-3">
+          <div className="flex items-center justify-between px-1">
+            <div className="flex items-center gap-2">
+              <Bell size={14} className="text-stone-400" />
+              <h2 className="font-bold text-sm uppercase tracking-widest text-stone-400">今日关注</h2>
+            </div>
+            <Link to="/notifications" className="text-xs text-blue-600 font-medium">
+              查看全部 ({notifications.summary.total})
+            </Link>
+          </div>
+
+          {/* 摘要条 */}
+          <div className="bg-white rounded-xl border border-stone-100 p-3">
+            <div className="grid grid-cols-4 gap-2">
+              <div className={cn('rounded-lg p-2 text-center', notifications.summary.overdue_count > 0 ? 'bg-red-50' : 'bg-stone-50')}>
+                <div className={cn('text-lg font-bold', notifications.summary.overdue_count > 0 ? 'text-red-600' : 'text-stone-400')}>
+                  {notifications.summary.overdue_count}
+                </div>
+                <div className="text-[10px] text-stone-400">已逾期</div>
+              </div>
+              <div className={cn('rounded-lg p-2 text-center', notifications.summary.due_soon_count > 0 ? 'bg-amber-50' : 'bg-stone-50')}>
+                <div className={cn('text-lg font-bold', notifications.summary.due_soon_count > 0 ? 'text-amber-600' : 'text-stone-400')}>
+                  {notifications.summary.due_soon_count}
+                </div>
+                <div className="text-[10px] text-stone-400">即将到期</div>
+              </div>
+              <div className={cn('rounded-lg p-2 text-center', notifications.summary.watchlist_alert_count > 0 ? 'bg-blue-50' : 'bg-stone-50')}>
+                <div className={cn('text-lg font-bold', notifications.summary.watchlist_alert_count > 0 ? 'text-blue-600' : 'text-stone-400')}>
+                  {notifications.summary.watchlist_alert_count}
+                </div>
+                <div className="text-[10px] text-stone-400">观察异动</div>
+              </div>
+              <div className={cn('rounded-lg p-2 text-center', notifications.summary.invalidation_count > 0 ? 'bg-orange-50' : 'bg-stone-50')}>
+                <div className={cn('text-lg font-bold', notifications.summary.invalidation_count > 0 ? 'text-orange-600' : 'text-stone-400')}>
+                  {notifications.summary.invalidation_count}
+                </div>
+                <div className="text-[10px] text-stone-400">结论预警</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Top 3 提醒卡片 */}
+          <div className="space-y-2">
+            {notifications.notifications.slice(0, 3).map((item: NotificationItem) => {
+              const isUrgent = item.urgency === 'overdue' || item.urgency === 'high';
+              const typeColors: Record<string, string> = {
+                review_reminder: 'bg-amber-50 border-amber-100',
+                watchlist_alert: 'bg-blue-50 border-blue-100',
+                analysis_invalidation: 'bg-red-50 border-red-100',
+              };
+              return (
+                <Link
+                  key={item.id}
+                  to={item.action_url || '/notifications'}
+                  className={cn(
+                    'block rounded-xl p-3 border transition-all hover:scale-[0.99] active:scale-[0.98]',
+                    typeColors[item.type] || 'bg-stone-50 border-stone-100',
+                    isUrgent && 'ring-1 ring-red-200',
+                  )}
+                >
+                  <div className="flex items-center gap-2 mb-0.5">
+                    {isUrgent && (
+                      <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-red-500" />
+                    )}
+                    <span className="font-semibold text-sm truncate">{item.title}</span>
+                  </div>
+                  <p className="text-xs text-stone-500 line-clamp-1">{item.description}</p>
+                  {item.stock_name && (
+                    <div className="mt-1 text-[10px] text-stone-400 font-mono">
+                      {item.stock_id} · {item.stock_name}
+                    </div>
+                  )}
+                </Link>
+              );
+            })}
+          </div>
+        </section>
       )}
 
       <div className="grid grid-cols-1 gap-3">

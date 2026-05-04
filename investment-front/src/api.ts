@@ -277,3 +277,15 @@ export async function patchReviewResult(
     },
   );
 }
+
+// Notifications
+
+/** GET /api/v1/notifications */
+export function getNotifications() {
+  return apiGet<import('./types').NotificationListResponse>('/api/v1/notifications');
+}
+
+/** GET /api/v1/notifications/summary */
+export function getNotificationSummary() {
+  return apiGet<import('./types').NotificationSummary>('/api/v1/notifications/summary');
+}

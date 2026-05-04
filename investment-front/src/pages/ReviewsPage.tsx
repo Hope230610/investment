@@ -4,7 +4,7 @@ import { Calendar, CheckCircle2, Clock } from 'lucide-react';
 
 import { apiGet } from '../api';
 import type { ReviewTask } from '../types';
-import { computeOverdueDays, computeUnfinishedReviews } from '../utils';
+import { computeOverdueDays, computeUnfinishedReviews, sortUnfinishedReviews } from '../utils';
 
 
 export default function ReviewsPage() {
@@ -39,7 +39,7 @@ export default function ReviewsPage() {
   }, []);
 
   // 已完成 = 有 review_result 的记录（无论是"稍后"还是"确认"触发的）
-  const pending = computeUnfinishedReviews(reviews);
+  const pending = sortUnfinishedReviews(computeUnfinishedReviews(reviews));
   const completed = reviews.filter((task) => task.review_result != null);
 
   if (loading) return <div className="p-8 text-center text-stone-400">加载中...</div>;

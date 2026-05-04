@@ -6,6 +6,7 @@ from . import watchlist
 from . import user
 from . import reviews
 from . import records
+from . import notifications
 
 api_router = APIRouter()
 
@@ -16,3 +17,4 @@ api_router.include_router(watchlist.router, prefix="/watchlist", tags=["观察�
 api_router.include_router(user.router, prefix="/user", tags=["用户"])
 api_router.include_router(reviews.router, prefix="/reviews", tags=["复盘"])
 api_router.include_router(records.router, prefix="/records", tags=["记录"])
+api_router.include_router(notifications.router, prefix="/notifications", tags=["提醒"])
