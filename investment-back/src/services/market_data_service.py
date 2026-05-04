@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import threading
 from datetime import datetime, timedelta, timezone
@@ -62,24 +63,29 @@ class MarketDataService:
         self.settings = settings
         self.logger = structlog.get_logger().bind(service="market_data")
         self.cache = _TTLCache()
-        self.client = httpx.Client(
-            timeout=settings.STOCK_DATA_TIMEOUT,
-            follow_redirects=True,
-            trust_env=False,
-            headers={
-                "User-Agent": (
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/123.0.0.0 Safari/537.36"
-                ),
-                "Referer": "https://quote.eastmoney.com/",
-            },
-        )
+        self.mock_enabled = self._mock_market_enabled()
+        self.client: httpx.Client | None = None
+        if not self.mock_enabled:
+            self.client = httpx.Client(
+                timeout=settings.STOCK_DATA_TIMEOUT,
+                follow_redirects=True,
+                trust_env=False,
+                headers={
+                    "User-Agent": (
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) "
+                        "Chrome/123.0.0.0 Safari/537.36"
+                    ),
+                    "Referer": "https://quote.eastmoney.com/",
+                },
+            )
 
     def search_stocks(self, query: str, limit: int = 10) -> list[StockSearchItem]:
         normalized_query = query.strip()
         if not normalized_query:
             return []
+        if self.mock_enabled:
+            return self._mock_search_stocks(normalized_query, limit)
 
         cache_key = f"search:{normalized_query}:{limit}"
         cached = self.cache.get(cache_key)
@@ -132,6 +138,9 @@ class MarketDataService:
         return items
 
     def get_stock_detail(self, stock_id: str) -> StockDetail:
+        if self.mock_enabled:
+            return self._mock_stock_detail(stock_id)
+
         market, stock_code = self.normalize_stock_id(stock_id)
         search_match = self._resolve_stock_search_item(stock_id)
         quote_snapshot = self._fetch_quote_snapshot(market, stock_code)
@@ -182,7 +191,16 @@ class MarketDataService:
         raise ValueError(f"Unsupported stock identifier: {value}")
 
     def close(self):
-        self.client.close()
+        if self.client is not None:
+            self.client.close()
+
+    def _mock_market_enabled(self) -> bool:
+        value = (
+            os.getenv("E2E_MOCK_MARKET")
+            or os.getenv("MOCK_MARKET_DATA")
+            or ""
+        )
+        return value.strip().lower() in {"1", "true", "yes", "on"}
 
     def _resolve_stock_search_item(self, stock_id: str) -> Optional[StockSearchItem]:
         market, stock_code = self.normalize_stock_id(stock_id)
@@ -440,9 +458,212 @@ class MarketDataService:
             cninfo_client.close()
 
     def _request_json(self, url: str, params: dict[str, Any]) -> dict[str, Any]:
+        if self.client is None:
+            raise RuntimeError("real market data client is not initialized")
         response = self.client.get(url, params=params)
         response.raise_for_status()
         return response.json()
+
+    def _mock_search_stocks(self, query: str, limit: int) -> list[StockSearchItem]:
+        normalized = query.strip().upper()
+        matches = [
+            item for item in self._mock_stock_universe()
+            if normalized in item["stock_id"].upper()
+            or normalized in item["stock_code"]
+            or normalized in item["stock_name"]
+        ]
+        return [
+            StockSearchItem(
+                stock_id=item["stock_id"],
+                stock_code=item["stock_code"],
+                stock_name=item["stock_name"],
+                market=item["market"],
+                industry=item["industry"],
+                security_type="AStock",
+                pinyin=item["pinyin"],
+                quote_id=item["stock_id"],
+                matched_by="mock",
+            )
+            for item in matches[:limit]
+        ]
+
+    def _mock_stock_detail(self, stock_id: str) -> StockDetail:
+        market, stock_code = self.normalize_stock_id(stock_id)
+        normalized_id = f"{market}{stock_code}"
+        item = next(
+            (row for row in self._mock_stock_universe() if row["stock_id"] == normalized_id),
+            None,
+        )
+        if item is None:
+            raise ValueError(f"Unsupported stock identifier: {stock_id}")
+
+        data_as_of = datetime(2026, 4, 30, 15, 0, tzinfo=CN_TZ)
+        base_price = float(item["base_price"])
+        change_percent = float(item["change_percent"])
+        previous_close = round(base_price / (1 + change_percent / 100), 2)
+        history = self._mock_history(base_price)
+        events = [
+            StockEvent(
+                title=f"{item['stock_name']}2026年第一季度主要经营数据公告",
+                event_type="公司公告",
+                published_at=datetime(2026, 4, 29, 9, 0, tzinfo=CN_TZ),
+                url=f"https://mock.local/announcements/{normalized_id}/q1",
+                source="mock",
+            ),
+            StockEvent(
+                title=f"{item['stock_name']}关于召开业绩说明会的公告",
+                event_type="公司公告",
+                published_at=datetime(2026, 4, 28, 9, 0, tzinfo=CN_TZ),
+                url=f"https://mock.local/announcements/{normalized_id}/briefing",
+                source="mock",
+            ),
+        ]
+
+        return StockDetail(
+            stock_id=normalized_id,
+            stock_code=stock_code,
+            stock_name=item["stock_name"],
+            market=market,
+            industry=item["industry"],
+            security_type="AStock",
+            pinyin=item["pinyin"],
+            quote_id=normalized_id,
+            quote_snapshot=StockQuoteSnapshot(
+                latest_price=base_price,
+                change_amount=round(base_price - previous_close, 2),
+                change_percent=change_percent,
+                open_price=round(previous_close * 1.002, 2),
+                high_price=round(base_price * 1.015, 2),
+                low_price=round(base_price * 0.985, 2),
+                previous_close=previous_close,
+                volume=52800,
+                amount=base_price * 52800,
+                turnover_rate=0.42,
+                pe_ratio=float(item["pe_ratio"]),
+                pb_ratio=float(item["pb_ratio"]),
+                total_market_cap=base_price * 1_000_000_000,
+                circulating_market_cap=base_price * 800_000_000,
+                amplitude=3.0,
+                data_as_of=data_as_of,
+            ),
+            company_profile=StockCompanyProfile(
+                description=f"{item['stock_name']} 是 E2E mock 行情模式下的稳定测试标的，用于验证分析、证据卡、复盘与提醒链路。",
+                business_scope="E2E mock data",
+                board_name=item["industry"],
+                listing_date="2001-08-27",
+                source_url=f"https://mock.local/stocks/{normalized_id}",
+            ),
+            recent_events=events,
+            recent_history=history,
+            data_sources=["E2E Mock Quote", "E2E Mock History", "E2E Mock Announcements"],
+        )
+
+    def _mock_history(self, latest_price: float) -> list[StockHistoryPoint]:
+        points: list[StockHistoryPoint] = []
+        start = datetime(2026, 3, 20, tzinfo=CN_TZ)
+        for index in range(30):
+            close = round(latest_price * (0.94 + index * 0.002), 2)
+            open_price = round(close * 0.997, 2)
+            points.append(
+                StockHistoryPoint(
+                    date=start + timedelta(days=index),
+                    open_price=open_price,
+                    close_price=close,
+                    high_price=round(close * 1.012, 2),
+                    low_price=round(close * 0.988, 2),
+                    volume=50_000 + index * 100,
+                )
+            )
+        points[-1].close_price = latest_price
+        return points
+
+    def _mock_stock_universe(self) -> list[dict[str, Any]]:
+        return [
+            {
+                "stock_id": "SH600519",
+                "stock_code": "600519",
+                "stock_name": "贵州茅台",
+                "market": "SH",
+                "industry": "白酒",
+                "pinyin": "GZMT",
+                "base_price": 1384.79,
+                "change_percent": -1.17,
+                "pe_ratio": 20.97,
+                "pb_ratio": 6.40,
+            },
+            {
+                "stock_id": "SZ002594",
+                "stock_code": "002594",
+                "stock_name": "比亚迪",
+                "market": "SZ",
+                "industry": "汽车",
+                "pinyin": "BYD",
+                "base_price": 218.60,
+                "change_percent": 2.36,
+                "pe_ratio": 28.30,
+                "pb_ratio": 5.10,
+            },
+            {
+                "stock_id": "SZ300750",
+                "stock_code": "300750",
+                "stock_name": "宁德时代",
+                "market": "SZ",
+                "industry": "电池",
+                "pinyin": "NDSD",
+                "base_price": 192.40,
+                "change_percent": 3.20,
+                "pe_ratio": 24.80,
+                "pb_ratio": 4.20,
+            },
+            {
+                "stock_id": "SH600036",
+                "stock_code": "600036",
+                "stock_name": "招商银行",
+                "market": "SH",
+                "industry": "银行",
+                "pinyin": "ZSYH",
+                "base_price": 38.12,
+                "change_percent": -0.65,
+                "pe_ratio": 6.50,
+                "pb_ratio": 0.95,
+            },
+            {
+                "stock_id": "SZ000001",
+                "stock_code": "000001",
+                "stock_name": "平安银行",
+                "market": "SZ",
+                "industry": "银行",
+                "pinyin": "PAYH",
+                "base_price": 11.20,
+                "change_percent": 1.12,
+                "pe_ratio": 5.80,
+                "pb_ratio": 0.72,
+            },
+            {
+                "stock_id": "SH601012",
+                "stock_code": "601012",
+                "stock_name": "隆基绿能",
+                "market": "SH",
+                "industry": "光伏",
+                "pinyin": "LJLN",
+                "base_price": 18.42,
+                "change_percent": -2.10,
+                "pe_ratio": 18.60,
+                "pb_ratio": 1.45,
+            },
+            {
+                "stock_id": "SH600900",
+                "stock_code": "600900",
+                "stock_name": "长江电力",
+                "market": "SH",
+                "industry": "电力",
+                "pinyin": "CJDL",
+                "base_price": 26.80,
+                "change_percent": 0.88,
+                "pe_ratio": 22.10,
+                "pb_ratio": 3.10,
+            },
+        ]
 
     def _parse_tencent_quote(self, payload: str) -> list[str]:
         match = re.search(r'"([^"]+)"', payload)
