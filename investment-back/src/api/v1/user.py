@@ -4,6 +4,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from starlette.status import HTTP_401_UNAUTHORIZED, HTTP_404_NOT_FOUND, HTTP_409_CONFLICT
 from src.db.session import get_db
+from src.models.judgment_history import JudgmentHistory
 from src.models.user import User
 from src.schemas.common import ErrorDetail, ErrorResponse
 from src.schemas.user import (
@@ -234,6 +235,50 @@ async def get_learning_history(
 
     service = get_profile_service(db)
     return service.get_learning_history(current_user.id, days)
+
+
+@router.post("/profile/learning-history/debug-seed")
+async def debug_seed_learning_history(
+    data: dict,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user),
+):
+    """Seed learning history for E2E tests. Available only when DEBUG=true."""
+    if not settings.DEBUG:
+        raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail="Not found")
+
+    days = int(data.get("days", 30))
+    judgment_scores = data.get("judgment_scores", [])
+    if not isinstance(judgment_scores, list) or not judgment_scores:
+        raise HTTPException(status_code=400, detail="judgment_scores is required")
+
+    today = datetime.utcnow().date()
+    cutoff = today - timedelta(days=days)
+    db.query(JudgmentHistory).filter(
+        JudgmentHistory.user_id == current_user.id,
+        JudgmentHistory.judgment_date >= cutoff,
+    ).delete(synchronize_session=False)
+    db.commit()
+
+    label_by_score = {
+        100: "主要来自判断",
+        50: "部分判断 + 部分运气",
+        0: "主要来自运气",
+    }
+    service = get_profile_service(db)
+    for index, raw_score in enumerate(judgment_scores):
+        score = int(raw_score)
+        label = label_by_score.get(score)
+        if label is None:
+            raise HTTPException(status_code=400, detail=f"unsupported judgment score: {score}")
+        service.upsert_judgment_history(
+            user_id=current_user.id,
+            judgment_date=today - timedelta(days=index),
+            judgment_label=label,
+            is_hard_to_tell=False,
+        )
+
+    return {"success": True, "seeded": len(judgment_scores)}
 
 
 @router.post("/profile/learning-feedback", response_model=LearningFeedbackResponse)

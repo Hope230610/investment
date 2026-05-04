@@ -20,7 +20,7 @@ import { test, expect, type Page } from '@playwright/test';
 // Test configuration (reads from environment)
 // ---------------------------------------------------------------------------
 
-const BASE_URL = process.env['E2E_BASE_URL'] ?? 'http://localhost:5173';
+const BASE_URL = process.env['E2E_BASE_URL'] ?? 'http://localhost:3000';
 const TEST_USER = process.env['E2E_USER'] ?? 'testuser';
 const TEST_PASS = process.env['E2E_PASS'] ?? 'testpassword123';
 const ACCESS_TOKEN_KEY = 'ai_investment_access_token';
@@ -70,6 +70,38 @@ async function fetchLearningHistory(page: Page) {
   );
 }
 
+function getAnalysisIdFromResultUrl(page: Page): string {
+  const { pathname } = new URL(page.url());
+  const parts = pathname.split('/').filter(Boolean);
+  const resultIndex = parts.lastIndexOf('result');
+  if (resultIndex > 0) return parts[resultIndex - 1];
+  return parts.at(-1) || '';
+}
+
+async function waitForAnalysisReady(page: Page, timeout = 60_000) {
+  const analysisId = getAnalysisIdFromResultUrl(page);
+  const token = await getAccessToken(page);
+  if (!analysisId || !token) throw new Error('Missing analysis id or token');
+
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    const result = await page.evaluate(
+      async ({ baseUrl, id, accessToken }) => {
+        const response = await fetch(`${baseUrl}/api/v1/analysis/${id}`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        return response.json();
+      },
+      { baseUrl: BASE_URL, id: analysisId, accessToken: token },
+    ) as { status?: string };
+
+    if (result.status === 'ready' || result.status === 'partial_ready') return result;
+    if (result.status === 'failed') throw new Error(`Analysis failed: ${JSON.stringify(result)}`);
+    await page.waitForTimeout(2_000);
+  }
+  throw new Error(`Analysis ${analysisId} did not become ready within ${timeout}ms`);
+}
+
 // ---------------------------------------------------------------------------
 // Test: Learning Feedback Card — Confirm path
 // ---------------------------------------------------------------------------
@@ -77,32 +109,19 @@ async function fetchLearningHistory(page: Page) {
 test('feedback card shows on post-trade-review result page', async ({ page }) => {
   await loginAs(page);
 
-  // Navigate to post-trade-review via ReviewsPage "去复盘" button
-  // This tests the pending_review_task_id flow from ReviewsPage → PostTradeInput → ResultPage
-  await page.goto(`${BASE_URL}/reviews`);
+  await page.goto(`${BASE_URL}/analysis/post-trade?stock_id=SH600519&stock_name=贵州茅台`);
   await page.waitForLoadState('networkidle');
 
-  // Find and click a "去复盘" link (it should carry pending_review_task_id)
-  const reviewLink = page.locator('a[href*="pending_review_task_id"]').first();
-  const count = await reviewLink.count();
-
-  if (count === 0) {
-    // No pending reviews — skip this test
-    test.skip('No pending review tasks found, skipping E2E test');
-    return;
-  }
-
-  await reviewLink.click();
-  await page.waitForURL(url => url.pathname.includes('post-trade'));
-
   // Submit the review form
-  await page.getByPlaceholder(/操作行为|action/i).first().fill('continued');
-  await page.getByPlaceholder(/结果总结|outcome/i).first().fill('E2E test outcome');
+  await page.locator('input[placeholder*="买入"]').fill('continued');
+  await page.locator('textarea[placeholder*="价格变化"]').fill('E2E test outcome');
+  await page.getByRole('button', { name: /主要来自判断/i }).click();
   await page.getByRole('button', { name: /提交|submit/i }).click();
 
   // Should land on result page
   await page.waitForURL(url => url.pathname.includes('/result'));
   await page.waitForLoadState('networkidle');
+  await waitForAnalysisReady(page);
 
   // Feedback card should appear (800ms delay)
   try {
@@ -127,12 +146,14 @@ test('confirm button writes learning feedback to DB', async ({ page }) => {
   await page.goto(`${BASE_URL}/analysis/post-trade?stock_id=SH600519&stock_name=贵州茅台`);
   await page.waitForLoadState('networkidle');
 
-  await page.getByPlaceholder(/操作行为|action/i).first().fill('continued');
-  await page.getByPlaceholder(/结果总结|outcome/i).first().fill('E2E confirm test');
+  await page.locator('input[placeholder*="买入"]').fill('continued');
+  await page.locator('textarea[placeholder*="价格变化"]').fill('E2E confirm test');
+  await page.getByRole('button', { name: /主要来自判断/i }).click();
   await page.getByRole('button', { name: /提交|submit/i }).click();
 
   await page.waitForURL(url => url.pathname.includes('/result'));
   await page.waitForLoadState('networkidle');
+  await waitForAnalysisReady(page);
 
   // Wait for card + click confirm
   try {
@@ -174,11 +195,13 @@ test('dismiss button permanently hides feedback card', async ({ page }) => {
   await page.goto(`${BASE_URL}/analysis/post-trade?stock_id=SZ002594&stock_name=比亚迪`);
   await page.waitForLoadState('networkidle');
 
-  await page.getByPlaceholder(/操作行为|action/i).first().fill('delayed');
-  await page.getByPlaceholder(/结果总结|outcome/i).first().fill('E2E dismiss test');
+  await page.locator('input[placeholder*="买入"]').fill('delayed');
+  await page.locator('textarea[placeholder*="价格变化"]').fill('E2E dismiss test');
+  await page.getByRole('button', { name: /部分判断.*部分运气/i }).click();
   await page.getByRole('button', { name: /提交|submit/i }).click();
 
   await page.waitForURL(url => url.pathname.includes('/result'));
+  await waitForAnalysisReady(page);
 
   try {
     await waitForFeedbackCard(page, 4000);
@@ -207,11 +230,13 @@ test('later button increments show count, card reappears on next review', async 
   await page.goto(`${BASE_URL}/analysis/post-trade?stock_id=SZ300750&stock_name=宁德时代`);
   await page.waitForLoadState('networkidle');
 
-  await page.getByPlaceholder(/操作行为|action/i).first().fill('cancelled');
-  await page.getByPlaceholder(/结果总结|outcome/i).first().fill('E2E later test');
+  await page.locator('input[placeholder*="买入"]').fill('cancelled');
+  await page.locator('textarea[placeholder*="价格变化"]').fill('E2E later test');
+  await page.getByRole('button', { name: /主要来自运气/i }).click();
   await page.getByRole('button', { name: /提交|submit/i }).click();
 
   await page.waitForURL(url => url.pathname.includes('/result'));
+  await waitForAnalysisReady(page);
 
   try {
     await waitForFeedbackCard(page, 4000);
@@ -226,10 +251,12 @@ test('later button increments show count, card reappears on next review', async 
     // On a second review, card should still appear (< 3 shows)
     await page.goto(`${BASE_URL}/analysis/post-trade?stock_id=SH600036&stock_name=招商银行`);
     await page.waitForLoadState('networkidle');
-    await page.getByPlaceholder(/操作行为|action/i).first().fill('continued');
-    await page.getByPlaceholder(/结果总结|outcome/i).first().fill('Second review');
+    await page.locator('input[placeholder*="买入"]').fill('continued');
+    await page.locator('textarea[placeholder*="价格变化"]').fill('Second review');
+    await page.getByRole('button', { name: /主要来自判断/i }).click();
     await page.getByRole('button', { name: /提交|submit/i }).click();
     await page.waitForURL(url => url.pathname.includes('/result'));
+    await waitForAnalysisReady(page);
 
     await waitForFeedbackCard(page, 4000);
     const card2 = page.locator('[role="dialog"]').first();
@@ -255,7 +282,7 @@ test('profile page shows learning history after feedback', async ({ page }) => {
   const sectionCount = await historySection.count();
 
   if (sectionCount === 0) {
-    test.skip('Learning history section not found in ProfilePage');
+    test.skip(true, 'Learning history section not found in ProfilePage');
     return;
   }
 
@@ -267,6 +294,6 @@ test('profile page shows learning history after feedback', async ({ page }) => {
 
   if (!hasSparkline) {
     // Section exists but no data yet — acceptable for fresh user
-    test.skip('Learning history section exists but no data displayed yet');
+    test.skip(true, 'Learning history section exists but no data displayed yet');
   }
 });

@@ -29,6 +29,7 @@ export default function PostTradeInput() {
   const [outcome, setOutcome] = useState('');
   const [deviation, setDeviation] = useState<boolean | null>(null);
   const [judgementQuality, setJudgementQuality] = useState('');
+  const [emotionLevel, setEmotionLevel] = useState(3);
   const [behaviorPatterns, setBehaviorPatterns] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -57,8 +58,7 @@ export default function PostTradeInput() {
           plan_deviation: deviation,
           judgement_quality: judgementQuality,
           behavior_patterns: behaviorPatterns,
-          // Pass emotion level if available from context
-          emotion_level: 3,
+          emotion_level: emotionLevel,
           // 如果是从 ReviewsPage 入口来的，携带原始 review task UUID
           pending_review_task_id: pendingReviewTaskId || undefined,
         },
@@ -71,7 +71,7 @@ export default function PostTradeInput() {
         planDeviation: deviation,
         judgementQuality,
         behaviorPatterns,
-        emotionLevel: 3,
+        emotionLevel,
       };
 
       navigate(`/analysis/${data.id}/result`, { state: { reviewFormData, pendingReviewTaskId } });
@@ -172,6 +172,30 @@ export default function PostTradeInput() {
               {option}
             </button>
           ))}
+        </div>
+      </section>
+
+      <section className="space-y-3">
+        <div className="flex items-center justify-between">
+          <label className="text-sm font-bold uppercase tracking-widest text-stone-400">当前情绪</label>
+          <span className="text-xs font-bold text-stone-600">
+            {emotionLevel <= 2 ? '比较冷静' : emotionLevel === 3 ? '有些波动' : '明显冲动'}
+          </span>
+        </div>
+        <input
+          aria-label="emotion level"
+          type="range"
+          min="1"
+          max="5"
+          step="1"
+          className="w-full accent-ink"
+          value={emotionLevel}
+          onChange={(event) => setEmotionLevel(parseInt(event.target.value, 10))}
+        />
+        <div className="flex justify-between text-[10px] text-stone-300 font-bold uppercase tracking-tighter">
+          <span>冷静</span>
+          <span>中性</span>
+          <span>冲动</span>
         </div>
       </section>
 
