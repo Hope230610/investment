@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import Optional
 import uuid
 
-from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from src.db.session import Base
@@ -59,6 +59,4 @@ class Watchlist(TimestampMixin, Base):
 
     __table_args__ = (
         UniqueConstraint("user_id", "stock_id", name="uq_watchlists_user_stock"),
-        Index("ix_watchlists_user_id", "user_id"),
-        Index("ix_watchlists_stock_id", "stock_id"),
     )
