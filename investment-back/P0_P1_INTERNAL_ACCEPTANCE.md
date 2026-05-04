@@ -309,4 +309,5 @@ powershell -ExecutionPolicy Bypass -File .\scripts\run-e2e-acceptance.ps1 `
 ### 7.8 当前已知未解决问题
 
 - 真实行情模式仍依赖外部接口，速度和稳定性受网络影响。
+- Redis/RQ worker path pending production-like verification: 当前 E2E 已覆盖默认 `RQ_ASYNC=true` 的 BackgroundTasks 路径；`RQ_ASYNC=false` 的 Redis/RQ 独立 worker 路径与其复用同一核心执行函数，但发布前若内测环境计划启用 Redis/RQ，仍需按生产化 worker 拓扑单独验收。
 - Vite build 有 chunk 超 500KB 提示，不影响内测启动，但后续可做代码分割。
