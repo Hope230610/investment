@@ -1,3 +1,11 @@
+# Track only the two project directories.
+/*
+!.gitignore
+!investment-back/
+!investment-back/**
+!investment-front/
+!investment-front/**
+
 # Local AI / editor tooling
 .codex/
 .claude/
@@ -5,25 +13,43 @@
 
 # Temporary work directories
 .tmp-front-install/
+.npm-cache/
 
 # Environment files
 .env
 .env.*
 !.env.example
 !**/.env.example
+investment-back/.env
+investment-back/.env.*
+!investment-back/.env.example
+investment-front/.env
+investment-front/.env.*
+!investment-front/.env.example
 
 # Python
 __pycache__/
+**/__pycache__/
 *.py[cod]
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
 .venv/
 venv/
+investment-back/__pycache__/
+investment-back/**/__pycache__/
+investment-back/.pytest_cache/
+investment-back/.mypy_cache/
+investment-back/.ruff_cache/
+investment-back/.venv/
 
 # Node.js
 node_modules/
 dist/
 build/
-.npm-cache/
+investment-front/node_modules/
+investment-front/dist/
+investment-front/build/
 
 # Logs and coverage
 *.log
@@ -31,28 +57,18 @@ build/
 .coverage.*
 htmlcov/
 coverage/
+playwright-report/
+test-results/
+.playwright/
+investment-back/htmlcov/
+investment-back/coverage/
+investment-front/coverage/
+investment-front/playwright-report/
+investment-front/test-results/
+investment-front/.playwright/
 
 # OS / editor
 .DS_Store
 Thumbs.db
 .idea/
 .vscode/
-
-# ——————————————————————————————————
-# Managed zones: only track investment-front and investment-back
-# ——————————————————————————————————
-*
-
-# Negate the two managed directories
-!investment-front/
-!investment-back/
-
-# Inside them, re-exclude all generated / cache dirs
-investment-front/node_modules/
-investment-front/dist/
-investment-front/build/
-investment-back/__pycache__/
-investment-back/.pytest_cache/
-investment-back/.mypy_cache/
-investment-back/.ruff_cache/
-investment-back/.venv/
