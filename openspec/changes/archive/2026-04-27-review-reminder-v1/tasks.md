@@ -19,4 +19,4 @@
 - [x] 4.1 `npm test` 通过，`vitest` 46/46
 - [x] 4.2 `npm run build` 通过；仍有现存 chunk size warning，非本 change 新引入
 - [x] 4.3 `npm run lint` 已恢复通过；之前由 `src/utils/learningFeedback.test.ts` 中预存的 Storage mock / `beforeEach` 问题造成的阻塞已单独收口
-- [ ] 4.4 手动 smoke：无待办、仅 pending、存在 expired、完成复盘后返回首页四条路径逐项确认
+- [x] 4.4 手动 smoke：无待办、仅 pending、存在 expired、完成复盘后返回首页四条路径逐项确认

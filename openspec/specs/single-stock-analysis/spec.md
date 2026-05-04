@@ -12,11 +12,36 @@
 - **THEN** 系统创建该次咨询并返回可追踪的处理引用
 
 ### Requirement: 单股咨询结果必须输出六段式决策卡
-系统 SHALL 在单股咨询结果可读时返回完整决策卡。该决策卡 MUST 同时覆盖判断结论、关键信号摘要、用户适配说明、下一步动作、主要风险和复查时点六类信息；结果还必须包含至少一个可展示的复查时间或失效条件说明，避免结论被长期误用。
+系统 SHALL 在单股咨询结果可读时返回完整决策卡。该决策卡 MUST 同时覆盖判断结论、关键信号摘要、用户适配说明、下一步动作、主要风险和复查时点六类信息，**并且额外包含支撑证据列表、反方证据列表、失效条件列表和置信度等级**。
+
+扩展后的决策卡字段（共 10 个）：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `headline_judgement` | string | 核心判断 |
+| `key_reason_summary` | `ReasonPoint[]` | 关键理由（含 OutputMarkType） |
+| `user_fit_summary` | `{fit, unfit}` | 用户适配说明 |
+| `next_step_actions` | `string[]` | 下一步动作 |
+| `primary_risks` | string | 主要风险（段落） |
+| `review_at` | datetime | 建议复查时间 |
+| `supporting_evidence` | `string[]` | 支撑证据（本次新增） |
+| `counter_evidence` | `string[]` | 反方证据（本次新增） |
+| `invalidation_conditions` | `string[]` | 失效条件（本次新增） |
+| `confidence_level` | `low \| medium \| high` | 置信度等级（本次新增） |
+
+#### Scenario: 决策卡输出完整证据结构
+- **WHEN** 单股咨询结果可读时
+- **THEN** 系统返回包含支撑证据、反方证据、失效条件和置信度等级的决策卡
+- **AND** `counter_evidence` 与 `key_reason_summary` 角度互补，不重复
+
+#### Scenario: 置信度不得默认高
+- **WHEN** 系统生成决策卡
+- **THEN** 置信度必须由数据质量和风险指标计算
+- **AND** 数据完整度低或风险得分高时，`confidence_level` MUST NOT be `high`
 
 #### Scenario: 单股咨询结果准备完成
 - **WHEN** 用户查看已经生成可读结果的单股咨询
-- **THEN** 系统返回包含六段式决策卡和复查时间的标准结果结构
+- **THEN** 系统返回包含十字段决策卡的标准结果结构
 
 ### Requirement: 单股咨询必须支持统一状态轮询
 系统 SHALL 允许用户持续追踪单股咨询的处理状态，并且状态语义 MUST 与共享状态口径保持一致。结果进入部分可读或完全可读阶段时，系统 MUST 同时告知当前是否存在降级、适配摘要和必要的后续复盘提示，避免用户误以为处理中结果已经等同于完整结论。

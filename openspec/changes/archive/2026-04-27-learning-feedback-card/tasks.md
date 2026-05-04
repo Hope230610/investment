@@ -21,5 +21,5 @@
 
 - [x] 4.1 完成 TypeScript 编译与前端构建验证，确认反馈卡主链路无类型错误
 - [x] 4.2 完成 migration `008`、模型、schema 与 profile API 的实现级校对
-- [ ] 4.3 在目标环境执行 `alembic upgrade head`，确认学习历史表创建成功
-- [ ] 4.4 完成手动 E2E：登录 → post-trade-review → 确认反馈 → ProfilePage 查看 learning history
+- [x] 4.3 在目标环境执行 `alembic upgrade head`，确认学习历史表创建成功
+- [x] 4.4 完成手动 E2E：登录 → post-trade-review → 确认反馈 → ProfilePage 查看 learning history
