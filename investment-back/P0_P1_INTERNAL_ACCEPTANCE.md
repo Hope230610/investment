@@ -18,6 +18,40 @@
 - 已补充分析失败前端兜底展示：失败原因、下一步、检查项、失效边界。
 - `RQ_ASYNC=false` Redis/RQ 独立 worker 路径仍未做生产化拓扑验收。
 
+## 0. 内测检查点（2026-05-04）
+
+当前最新提交：
+- `a5b59c9 chore(repo): tighten generated file ignores`
+- `bcb0783 fix(backend): remove duplicate watchlist indexes`
+- `9d36033 docs: update p0 p1 acceptance status`
+- `5220e40 feat(app): add structured analysis failure fallback`
+- `db13071 chore(app): unify error response parsing`
+
+当前验证结果：
+- backend pytest: 76 passed。
+- frontend test: 48 passed。
+- frontend build: passed，有既有 500KB chunk warning。
+- Mock Full E2E: 21 passed。
+- Real Full E2E: 21 passed。
+- `git status --short`: clean。
+- `git ls-files --others --exclude-standard`: no untracked generated files。
+
+当前结论：
+- 已达到 P0/P1 内测可信基础线。
+- 仍不能宣称成熟生产态。
+
+剩余风险：
+- `RQ_ASYNC=false` Redis/RQ worker path 未生产化拓扑验收。
+- Real market 依赖外部接口稳定性。
+- 证据质量仍需继续提升。
+- 提醒价值需要真实用户验证。
+- P2 持仓/组合层未完成。
+
+下一阶段建议：
+- 内测前：只修 bug、补验收、补文档，不扩 P2 大功能。
+- 内测中：重点观察提醒是否有价值、失败兜底是否清晰、Learning Feedback 是否真的影响用户决策质量。
+- 内测后：再根据真实反馈推进 need.md 中 P1/P2 能力。
+
 ## 1. 后端基础守卫
 
 ```powershell
