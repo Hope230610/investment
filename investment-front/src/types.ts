@@ -141,6 +141,9 @@ export interface DecisionCardV2 {
   counter_evidence: string[];            // 反方证据（本次新增）
   invalidation_conditions: string[];     // 失效条件（本次新增）
   confidence_level: 'low' | 'medium' | 'high';  // 置信度等级（本次新增）
+  confidence?: 'low' | 'medium' | 'high';        // 后端对外别名，等价于 confidence_level
+  timestamp?: string | null;             // 决策卡生成/数据时间戳
+  valid_until?: string | null;           // 决策卡有效期
 }
 
 export interface BehaviorIntervention {
@@ -206,6 +209,8 @@ export interface AnalysisDetail {
   scenario: string;
   status: AnalysisStatus;
   degrade_flags: string[];
+  analysis_template_version?: string | null;
+  analysis_policy_version?: string | null;
   decision_card: DecisionCardV2;
   fit_summary?: string | null;
   market_context?: MarketContext | null;
@@ -219,6 +224,7 @@ export interface AnalysisDetail {
   data_sources: string[];
   valid_until?: string | null;
   data_as_of?: string | null;
+  timestamp?: string | null;
   // 股票基本信息（从 StockDetail 获取）
   stock_name?: string | null;
   stock_market?: string | null;

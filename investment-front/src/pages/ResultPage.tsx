@@ -66,6 +66,19 @@ function formatLargeNumber(value?: number | null) {
 }
 
 
+function formatDegradeFlag(flag: string) {
+  if (flag === 'missing_market_data') return '行情数据暂时不完整';
+  if (flag === 'missing_announcements') return '公告/事件信息不足';
+  if (flag === 'insufficient_evidence') return '证据链不足，当前结论仅供观察';
+  if (flag === 'model_fallback') return '已使用规则兜底结果';
+  if (flag.startsWith('analysis_error')) {
+    const detail = flag.replace('analysis_error: ', '').trim();
+    return detail ? `分析生成异常：${detail}` : '分析过程出现异常';
+  }
+  return flag;
+}
+
+
 const outputTagStyles: Record<OutputMarkType, string> = {
   data_fact: 'bg-emerald-100 text-emerald-700 border-emerald-200',
   model_inference: 'bg-blue-100 text-blue-700 border-blue-200',
@@ -339,6 +352,7 @@ export default function ResultPage() {
   const market = analysis?.stock_market || analysis?.stock_id.slice(0, 2) || '--';
   const validUntil = analysis?.valid_until;
   const dataAsOf = analysis?.data_as_of;
+  const confidence = decisionCard?.confidence ?? decisionCard?.confidence_level ?? 'medium';
   const isExpired = validUntil ? Date.now() > new Date(validUntil).getTime() : analysis?.status === 'expired';
 
   const handleRemoveFromWatchlist = async () => {
@@ -441,6 +455,9 @@ export default function ResultPage() {
   }
 
   if (analysis.status === 'failed') {
+    const failReason = analysis.degrade_flags && analysis.degrade_flags.length > 0
+      ? analysis.degrade_flags[0].replace('analysis_error: ', '')
+      : null;
     return (
       <div className="p-6 min-h-[60vh] flex items-center justify-center">
         <div className="bg-white rounded-3xl border border-stone-100 p-6 shadow-sm max-w-sm w-full space-y-4 text-center">
@@ -450,7 +467,9 @@ export default function ResultPage() {
           <div className="space-y-2">
             <h2 className="text-lg font-bold">分析生成失败</h2>
             <p className="text-sm text-stone-500 leading-relaxed">
-              这次没有成功拿到完整数据，建议稍后重新发起分析。
+              {failReason
+                ? `失败原因：${failReason}。建议稍后重新发起分析。`
+                : '这次没有成功拿到完整数据，建议稍后重新发起分析。'}
             </p>
           </div>
           <button
@@ -494,7 +513,18 @@ export default function ResultPage() {
         >
           <Info size={16} className="text-amber-500 shrink-0 mt-0.5" />
           <div className="text-xs text-amber-800 leading-relaxed">
-            <span className="font-bold">部分就绪</span>：部分模块数据暂时缺失，分析结论已可用，但部分内容可能不够完整，请留意各板块的降级提示。
+            <span className="font-bold">受限结论</span>：当前结果可供阅读，但不能视为完整判断。请优先观察、补充信息或重新评估。
+            {analysis.degrade_flags && analysis.degrade_flags.length > 0 ? (
+              <ul className="mt-1.5 space-y-0.5 pl-2">
+                {analysis.degrade_flags.map((flag, i) => (
+                  <li key={i} className="list-disc">
+                    {formatDegradeFlag(flag)}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              '部分内容可能不够完整，请留意各板块的降级提示。'
+            )}
           </div>
         </motion.div>
       )}
@@ -589,14 +619,14 @@ export default function ResultPage() {
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-2">
             <label className="text-[10px] font-bold text-stone-300 uppercase tracking-widest">一句话判断</label>
-            {decisionCard.confidence_level && (
+            {confidence && (
               <span className={cn(
                 'px-2 py-0.5 rounded-full text-[10px] font-bold',
-                decisionCard.confidence_level === 'high' && 'bg-emerald-100 text-emerald-700',
-                decisionCard.confidence_level === 'medium' && 'bg-amber-100 text-amber-700',
-                decisionCard.confidence_level === 'low' && 'bg-red-100 text-red-700',
+                confidence === 'high' && 'bg-emerald-100 text-emerald-700',
+                confidence === 'medium' && 'bg-amber-100 text-amber-700',
+                confidence === 'low' && 'bg-red-100 text-red-700',
               )}>
-                {decisionCard.confidence_level === 'high' ? '高置信' : decisionCard.confidence_level === 'medium' ? '中置信' : '低置信'}
+                {confidence === 'high' ? '高置信' : confidence === 'medium' ? '中置信' : '低置信'}
               </span>
             )}
           </div>
@@ -616,11 +646,11 @@ export default function ResultPage() {
             <label className="text-[10px] font-bold text-stone-300 uppercase tracking-widest">置信等级</label>
             <p className={cn(
               'text-xs font-bold',
-              decisionCard.confidence_level === 'high' && 'text-emerald-600',
-              decisionCard.confidence_level === 'medium' && 'text-amber-600',
-              decisionCard.confidence_level === 'low' && 'text-red-600',
+              confidence === 'high' && 'text-emerald-600',
+              confidence === 'medium' && 'text-amber-600',
+              confidence === 'low' && 'text-red-600',
             )}>
-              {decisionCard.confidence_level === 'high' ? '高' : decisionCard.confidence_level === 'medium' ? '中' : '低'}
+              {confidence === 'high' ? '高' : confidence === 'medium' ? '中' : '低'}
             </p>
           </div>
         </div>
@@ -858,6 +888,19 @@ export default function ResultPage() {
                 ))}
               </div>
             </div>
+            {(analysis.analysis_template_version || analysis.analysis_policy_version) && (
+              <div className="space-y-2">
+                <h4 className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">分析版本</h4>
+                <div className="grid grid-cols-1 gap-2 text-xs">
+                  {analysis.analysis_template_version && (
+                    <div className="rounded-xl bg-white p-3">模板：{analysis.analysis_template_version}</div>
+                  )}
+                  {analysis.analysis_policy_version && (
+                    <div className="rounded-xl bg-white p-3">策略：{analysis.analysis_policy_version}</div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </motion.div>
       )}
