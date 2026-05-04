@@ -93,7 +93,6 @@ class BehaviorIntervention(Base):
     task = relationship("AnalysisTask", back_populates="behavior_interventions")
 
     __table_args__ = (
-        Index("ix_behavior_interventions_user_id", "user_id"),
         Index("ix_behavior_interventions_behavior_type", "behavior_type"),
         Index("ix_behavior_interventions_created_at", "created_at"),
     )

@@ -163,6 +163,9 @@ class AnalysisUpdate(BaseModel):
 
 class AnalysisResult(BaseModel):
     status: str
+    analysis_template_version: str = "decision-card-v1"
+    analysis_policy_version: str = "p0-quality-policy-v1"
+    degrade_flags: List[str] = []
     intervention: Optional[BehaviorIntervention] = None
     decision_card: DecisionCard
     fit_summary: str
@@ -211,6 +214,10 @@ class DecisionCardV2(BaseModel):
     counter_evidence: List[str] = []      # 反方证据（本次新增）
     invalidation_conditions: List[str] = []  # 失效条件（本次新增）
     confidence_level: Literal["low", "medium", "high"] = "medium"  # 置信度等级（本次新增）
+    # 对外契约别名：confidence 是产品语言，confidence_level 是存储字段。
+    confidence: Literal["low", "medium", "high"] = "medium"
+    timestamp: Optional[datetime] = None
+    valid_until: Optional[datetime] = None
 
 
 class InterventionInfo(BaseModel):
@@ -229,6 +236,8 @@ class GetAnalysisResponseV2(BaseModel):
     scenario: str
     status: str
     degrade_flags: List[str] = []
+    analysis_template_version: Optional[str] = None
+    analysis_policy_version: Optional[str] = None
     intervention: Optional[InterventionInfo] = None
     decision_card: DecisionCardV2
     fit_summary: Optional[str] = None
@@ -243,6 +252,7 @@ class GetAnalysisResponseV2(BaseModel):
     data_sources: List[str] = []
     valid_until: Optional[datetime] = None
     data_as_of: Optional[datetime] = None
+    timestamp: Optional[datetime] = None
     # 股票基本信息（从 StockDetail 获取）
     stock_name: Optional[str] = None
     stock_market: Optional[str] = None

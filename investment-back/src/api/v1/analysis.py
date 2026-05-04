@@ -14,37 +14,20 @@ from starlette.status import HTTP_400_BAD_REQUEST, HTTP_404_NOT_FOUND, HTTP_409_
 from src.api.deps import get_current_user, get_market_data_service
 from src.schemas.common import ErrorDetail, ErrorResponse
 from src.db.session import SessionLocal, get_db
-from src.models.analysis import Analysis as AnalysisModel
-from src.models.analysis import AnalysisReason as AnalysisReasonModel
-from src.models.analysis import AnalysisStatus, ReviewTask as ReviewTaskModel
-from src.models.analysis import ReviewTaskStatus
 from src.models.stock import Stock as StockModel
 from src.models.user import User
-from src.models.watchlist import FocusReason as FocusReasonModel
 from src.schemas.analysis import (
-    Analysis,
     AnalysisCreate,
     AnalysisCreateResponse,
     AnalysisRecord,
     GetAnalysisResponseV2,
-    InterventionInfo,
-    DecisionCardV2,
     ReviewTask,
-    ReviewTaskCreateV2,
 )
 from src.schemas.stock import StockDetail
-from src.schemas.watchlist import FocusReason, FocusReasonCreate, RecordReasonRequest, RecordReasonResponse
-from src.services.adaptation_service import AdaptationService
-from src.services.analysis_generation_service import AnalysisGenerationService
-from src.services.analysis_service import (
-    ANALYSIS_ROUTING,
-    _is_valid_uuid,
-    _parse_analysis_id,
-    AnalysisService,
-)
-from src.services.intervention_service import InterventionContext, InterventionService
+from src.schemas.watchlist import RecordReasonRequest, RecordReasonResponse
+from src.services.analysis_service import _is_valid_uuid, AnalysisService
 from src.services.market_data_service import MarketDataService
-from src.services.user_service import UserService
+from src.workers.dispatcher import enqueue_analysis_job
 
 
 router = APIRouter()
@@ -97,7 +80,7 @@ def _load_stock_detail_or_502(
     market_data_service: MarketDataService,
     stock_id: str,
     request: Optional[Request] = None,
-) -> StockDetail:
+) -> StockDetail | JSONResponse:
     try:
         return market_data_service.get_stock_detail(stock_id)
     except ValueError as exc:
@@ -116,13 +99,17 @@ def _load_stock_detail_or_502(
 @router.post("")
 async def create_analysis(
     analysis_data: AnalysisCreate,
-    background_tasks: BackgroundTasks,
     request: Request,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     market_data_service: MarketDataService = Depends(get_market_data_service),
 ):
-    """Create a real-data analysis job."""
+    """Create a real-data analysis job.
+
+    Writes the task record and dispatches execution to the async worker
+    (BackgroundTasks in dev via RQ_ASYNC=True; RQ queue in production).
+    """
     logger.info(
         "create_analysis",
         scenario=analysis_data.scenario.value,
@@ -131,301 +118,24 @@ async def create_analysis(
     )
 
     stock_detail = _load_stock_detail_or_502(market_data_service, analysis_data.stock_id, request)
+    if isinstance(stock_detail, JSONResponse):
+        return stock_detail
+
     _upsert_stock_record(db, stock_detail)
 
     analysis_service = AnalysisService(db)
     result_obj = analysis_service.create_analysis(current_user.id, analysis_data)
 
-    # 路由分发：新路径返回 UUID，旧路径返回完整记录
-    if ANALYSIS_ROUTING.get("analysis") == "new":
-        task_uuid = str(result_obj.id)
-        task_status = result_obj.status
-        background_tasks.add_task(process_analysis_v2, task_uuid)
-        db.refresh(result_obj)
-        return AnalysisCreateResponse(
-            id=task_uuid,
-            status=task_status.value,
-        )
-    else:
-        background_tasks.add_task(process_analysis, result_obj.id)
-        db.refresh(result_obj)
-        return result_obj
+    task_uuid = str(result_obj.id)
+    enqueue_analysis_job(task_uuid, background_tasks)
+    db.refresh(result_obj)
+    return AnalysisCreateResponse(
+        id=task_uuid,
+        status=result_obj.status.value,
+    )
 
 
-def process_analysis(analysis_id: int):
-    """旧路径分析处理（legacy analyses 表）。
-
-    仅在 ANALYSIS_ROUTING["analysis"] == "old" 时被调用。
-    迁移 007 将 analyses 重命名为 analyses_legacy 后，
-    此函数检测到旧表不存在则安全退出。
-    """
-    if ANALYSIS_ROUTING.get("analysis") != "old":
-        logger.info("process_analysis_skipped", reason="routing_is_new")
-        return
-
-    db = SessionLocal()
-    analysis: Optional[AnalysisModel] = None
-    market_data_service = MarketDataService()
-
-    try:
-        logger.info("process_analysis", analysis_id=analysis_id)
-
-        analysis_service = AnalysisService(db)
-        user_service = UserService(db)
-        adaptation_service = AdaptationService()
-        intervention_service = InterventionService()
-        generation_service = AnalysisGenerationService()
-
-        analysis = db.query(AnalysisModel).filter(AnalysisModel.id == analysis_id).first()
-        if not analysis:
-            logger.error("analysis_not_found", analysis_id=analysis_id)
-            return
-
-        stock_detail = market_data_service.get_stock_detail(analysis.stock_id)
-        stock = _upsert_stock_record(db, stock_detail)
-        user_profile = user_service.get_or_create_profile(analysis.user_id)
-        scenario_payload = analysis.scenario_payload or {}
-
-        intervention = None
-        if scenario_payload:
-            context = InterventionContext(
-                intent=scenario_payload.get("intent"),
-                trigger_reason=scenario_payload.get("trigger_reason"),
-                emotion_level=scenario_payload.get("emotion_level"),
-                scenario=analysis.scenario.value,
-                recent_analyses=analysis_service.get_recent_analyses(analysis.user_id),
-            )
-            intervention = intervention_service.detect_and_intervene(user_profile, context)
-
-        result = generation_service.generate(
-            detail=stock_detail,
-            scenario=analysis.scenario,
-            user_profile=user_profile,
-            scenario_payload=scenario_payload,
-            intervention=intervention,
-        )
-        result.decision_card = adaptation_service.adapt_decision_for_user(
-            result.decision_card,
-            user_profile,
-        )
-
-        analysis.status = AnalysisStatus.READY
-        analysis.headline = result.decision_card.headline_judgement
-        analysis.decision_card = result.decision_card.model_dump(mode="json")
-        analysis.fit_summary = result.fit_summary
-        analysis.market_context = result.market_context.model_dump(mode="json")
-        analysis.explanation_layer = result.explanation_layer.model_dump(mode="json")
-        analysis.intervention = (
-            result.intervention.model_dump(mode="json")
-            if result.intervention
-            else None
-        )
-        analysis.review_at = _to_storage_datetime(result.decision_card.review_at)
-        analysis.valid_until = _to_storage_datetime(result.decision_card.valid_until)
-
-        db.query(AnalysisReasonModel).filter(
-            AnalysisReasonModel.analysis_id == analysis.id
-        ).delete()
-        for index, reason in enumerate(result.decision_card.key_reason_summary):
-            db.add(
-                AnalysisReasonModel(
-                    analysis_id=analysis.id,
-                    text=reason.text,
-                    order=index,
-                    mark_type=reason.tag,
-                )
-            )
-
-        if analysis.review_at:
-            review_task = (
-                db.query(ReviewTaskModel)
-                .filter(ReviewTaskModel.analysis_id == analysis.id)
-                .first()
-            )
-            if not review_task:
-                review_task = ReviewTaskModel(
-                    user_id=analysis.user_id,
-                    analysis_id=analysis.id,
-                    stock_name=stock.stock_name,
-                    scenario=analysis.scenario.value,
-                    review_at=analysis.review_at,
-                )
-                db.add(review_task)
-
-            review_task.stock_name = stock.stock_name
-            review_task.scenario = analysis.scenario.value
-            review_task.review_at = analysis.review_at
-            review_task.status = (
-                ReviewTaskStatus.EXPIRED
-                if analysis.review_at <= datetime.now()
-                else ReviewTaskStatus.PENDING
-            )
-
-        db.commit()
-        logger.info("analysis_completed", analysis_id=analysis_id)
-
-    except Exception as exc:
-        logger.error("analysis_failed", analysis_id=analysis_id, error=str(exc))
-        if analysis is not None:
-            analysis.status = AnalysisStatus.FAILED
-            db.commit()
-    finally:
-        market_data_service.close()
-        db.close()
-
-
-def process_analysis_v2(task_uuid_str: str):
-    """新路径分析处理：直接处理 AnalysisTask，不依赖 legacy analyses 表。
-
-    由 create_analysis 在 ANALYSIS_ROUTING["analysis"] == "new" 时调用。
-    接收 analysis_task.id（UUID 字符串），生成分析结果写入 analysis_results。
-    """
-    from datetime import timedelta
-    import uuid as uuid_lib
-    from src.models.analysis import ReviewTask as ReviewTaskModel, ReviewTaskStatus
-
-    db = SessionLocal()
-    market_data_service = MarketDataService()
-    try:
-        task_uuid = uuid_lib.UUID(task_uuid_str)
-        logger.info("process_analysis_v2", task_id=task_uuid_str)
-
-        analysis_service = AnalysisService(db)
-        user_service = UserService(db)
-        adaptation_service = AdaptationService()
-        intervention_service = InterventionService()
-        generation_service = AnalysisGenerationService()
-
-        # 读取 AnalysisTask
-        from src.models.analysis_task import AnalysisTask, AnalysisScenarioEnum, AnalysisStatusEnum
-        task = db.query(AnalysisTask).filter(AnalysisTask.id == task_uuid).first()
-        if not task:
-            logger.error("analysis_task_not_found", task_id=task_uuid_str)
-            return
-
-        stock_detail = market_data_service.get_stock_detail(task.stock_id)
-        stock = _upsert_stock_record(db, stock_detail)
-        user_profile = user_service.get_or_create_profile(task.user_id)
-        scenario_payload = task.scenario_payload or {}
-
-        # === 1. 生成分析结果 ===
-        intervention = None
-        if scenario_payload:
-            context = InterventionContext(
-                intent=scenario_payload.get("intent"),
-                trigger_reason=scenario_payload.get("trigger_reason"),
-                emotion_level=scenario_payload.get("emotion_level"),
-                scenario=task.scenario.value if hasattr(task.scenario, "value") else task.scenario,
-                recent_analyses=analysis_service.get_recent_analyses(task.user_id),
-            )
-            intervention = intervention_service.detect_and_intervene(user_profile, context)
-
-        # InteractionScenario 枚举用于旧 generation_service
-        from src.models.analysis import InteractionScenario
-        scenario_enum = InteractionScenario(
-            task.scenario.value if hasattr(task.scenario, "value") else task.scenario
-        )
-        result = generation_service.generate(
-            detail=stock_detail,
-            scenario=scenario_enum,
-            user_profile=user_profile,
-            scenario_payload=scenario_payload,
-            intervention=intervention,
-        )
-        result.decision_card = adaptation_service.adapt_decision_for_user(
-            result.decision_card,
-            user_profile,
-        )
-
-        # === 2. 更新 AnalysisTask 状态 ===
-        task.status = AnalysisStatusEnum.READY
-        task.completed_at = datetime.utcnow()
-        task.updated_at = datetime.utcnow()
-
-        # === 3. 写入 AnalysisResult ===
-        from src.models.analysis_result import AnalysisResult, ValidPeriodEnum
-
-        existing_result = db.query(AnalysisResult).filter(
-            AnalysisResult.analysis_task_id == task.id
-        ).first()
-
-        if not existing_result:
-            result_record = AnalysisResult(
-                id=uuid_lib.uuid4(),
-                analysis_task_id=task.id,
-                headline_judgement=result.decision_card.headline_judgement,
-                key_reason_summary=[
-                    {"text": r.text, "mark_type": r.tag.value}
-                    for r in result.decision_card.key_reason_summary
-                ],
-                user_fit_summary={
-                    "fit": result.user_fit_summary.fit if hasattr(result, "user_fit_summary") else "",
-                    "unfit": result.user_fit_summary.unfit if hasattr(result, "user_fit_summary") else "",
-                },
-                next_step_actions=[a for a in result.decision_card.next_step_actions],
-                primary_risks="",
-                review_at=_to_storage_datetime(result.decision_card.review_at),
-                intervention=(
-                    result.intervention.model_dump(mode="json")
-                    if result.intervention else None
-                ),
-                fit_summary=result.fit_summary,
-                market_context=result.market_context.model_dump(mode="json") if result.market_context else None,
-                explanation_layer=result.explanation_layer.model_dump(mode="json") if result.explanation_layer else None,
-                output_tags=["model_inference"],
-                valid_period=ValidPeriodEnum.MEDIUM,
-                # 证据结构（本次新增）
-                supporting_evidence=[e for e in getattr(result.decision_card, "supporting_evidence", [])],
-                counter_evidence=[e for e in getattr(result.decision_card, "counter_evidence", [])],
-                invalidation_conditions=[e for e in getattr(result.decision_card, "invalidation_conditions", [])],
-                confidence_level=getattr(result.decision_card, "confidence_level", "medium"),
-            )
-            db.add(result_record)
-
-        # === 4. 创建 ReviewTask（使用 analysis_task_id） ===
-        review_at = _to_storage_datetime(result.decision_card.review_at)
-        scenario_str = task.scenario.value if hasattr(task.scenario, "value") else task.scenario
-        should_skip_review_task = (
-            scenario_str == "post_trade_review"
-            and scenario_payload.get("pending_review_task_id")
-        )
-        if review_at and not should_skip_review_task:
-            review_task = (
-                db.query(ReviewTaskModel)
-                .filter(ReviewTaskModel.analysis_task_id == task.id)
-                .first()
-            )
-            if not review_task:
-                review_task = ReviewTaskModel(
-                    user_id=task.user_id,
-                    analysis_task_id=task.id,
-                    stock_id=task.stock_id,
-                    stock_name=stock.stock_name,
-                    scenario=scenario_str,
-                    review_at=review_at,
-                )
-                db.add(review_task)
-            review_task.stock_id = task.stock_id
-            review_task.stock_name = stock.stock_name
-            review_task.scenario = scenario_str
-            review_task.review_at = review_at
-            review_task.status = (
-                ReviewTaskStatus.EXPIRED
-                if review_at <= datetime.now()
-                else ReviewTaskStatus.PENDING
-            )
-        else:
-            logger.info("review_task_skipped_by_pending_resolution", task_id=str(task.id))
-
-        db.commit()
-        logger.info("analysis_v2_completed", task_id=str(task.id))
-
-    except Exception as exc:
-        logger.error("analysis_v2_failed", task_id=task_uuid_str, error=str(exc))
-        db.rollback()
-    finally:
-        market_data_service.close()
-        db.close()
+# Analysis job execution is dispatched to src/workers/ (RQ queue in prod; BackgroundTasks in dev).
 
 
 @router.get("/{analysis_id}", response_model=GetAnalysisResponseV2)
@@ -450,9 +160,6 @@ async def get_analysis(
         )
 
     uuid_val = uuid_lib.UUID(analysis_id)
-    if ANALYSIS_ROUTING.get("analysis") != "new":
-        return api_error(HTTP_404_NOT_FOUND, "ANALYSIS_NOT_FOUND", "分析未找到", request)
-
     return _get_analysis_from_new_tables(
         db, current_user.id, uuid_val, market_data_service, request
     )
@@ -505,9 +212,32 @@ def _get_analysis_from_new_tables(
     degrade_flags: List[str] = []
     if task.status == AnalysisStatusEnum.PARTIAL_READY:
         degrade_flags.append("insufficient_evidence")
+    elif task.status == AnalysisStatusEnum.FAILED:
+        if task.error_message:
+            degrade_flags.append(f"analysis_error: {task.error_message}")
+        else:
+            degrade_flags.append("analysis_error")
+
+    analysis_template_version = None
+    analysis_policy_version = None
+    if result and result.detail_panels:
+        metadata = result.detail_panels.get("metadata") if isinstance(result.detail_panels, dict) else None
+        if isinstance(metadata, dict):
+            stored_flags = metadata.get("degrade_flags")
+            if isinstance(stored_flags, list):
+                for flag in stored_flags:
+                    if isinstance(flag, str) and flag not in degrade_flags:
+                        degrade_flags.append(flag)
+            analysis_template_version = metadata.get("analysis_template_version")
+            analysis_policy_version = metadata.get("analysis_policy_version")
 
     # 决策卡
     if result:
+        # valid_until = review_at + 7 天（与 generation_service 保持一致）
+        from datetime import timedelta
+        valid_until = result.review_at + timedelta(days=7) if result.review_at else None
+        timestamp = result.created_at
+        confidence = result.confidence_level or "medium"
         decision_card = {
             "headline_judgement": result.headline_judgement or "（分析中）",
             "key_reason_summary": result.key_reason_summary or [],
@@ -515,11 +245,14 @@ def _get_analysis_from_new_tables(
             "next_step_actions": result.next_step_actions or [],
             "primary_risks": result.primary_risks or "",
             "review_at": result.review_at,
+            "valid_until": valid_until,
+            "timestamp": timestamp,
             # 证据结构（本次新增）
             "supporting_evidence": result.supporting_evidence or [],
             "counter_evidence": result.counter_evidence or [],
             "invalidation_conditions": result.invalidation_conditions or [],
-            "confidence_level": result.confidence_level or "medium",
+            "confidence_level": confidence,
+            "confidence": confidence,
         }
         intervention_info = None
         if result.intervention:
@@ -528,20 +261,11 @@ def _get_analysis_from_new_tables(
                 "severity": result.intervention.get("severity", "medium"),
                 "questions": result.intervention.get("questions", []),
             }
-        # valid_until = review_at + 7 天（与 generation_service 保持一致）
-        from datetime import timedelta
-        valid_until = result.review_at + timedelta(days=7) if result.review_at else None
     else:
-        decision_card = {
-            "headline_judgement": "（分析中）",
-            "key_reason_summary": [],
-            "user_fit_summary": {"fit": "", "unfit": ""},
-            "next_step_actions": [],
-            "primary_risks": "",
-            "review_at": task.expired_at,
-        }
+        valid_until = task.expired_at
+        timestamp = task.updated_at or task.created_at
+        decision_card = _build_pending_decision_card(task, response_status, timestamp, valid_until)
         intervention_info = None
-        valid_until = None
 
     # 复盘任务（取最新一条）
     review_task_data = None
@@ -570,6 +294,8 @@ def _get_analysis_from_new_tables(
         scenario=task.scenario.value if hasattr(task.scenario, "value") else task.scenario,
         status=response_status,
         degrade_flags=degrade_flags,
+        analysis_template_version=analysis_template_version,
+        analysis_policy_version=analysis_policy_version,
         intervention=intervention_info,
         decision_card=decision_card,
         fit_summary=result.fit_summary if result else None,
@@ -582,11 +308,58 @@ def _get_analysis_from_new_tables(
         data_sources=data_sources,
         valid_until=valid_until,
         data_as_of=data_as_of,
+        timestamp=data_as_of or (result.created_at if result else timestamp),
         stock_name=stock_name,
         stock_market=stock_market,
         stock_industry=stock_industry,
         scenario_payload=task.scenario_payload,
     )
+
+
+def _build_pending_decision_card(
+    task,
+    response_status: str,
+    timestamp: Optional[datetime],
+    valid_until: Optional[datetime],
+) -> dict:
+    """Return a schema-complete card while the async job is not ready yet."""
+    failed = response_status == "failed"
+    stock_id = getattr(task, "stock_id", "该股票")
+    error_message = getattr(task, "error_message", None)
+    headline = "分析失败，请稍后重试" if failed else "分析正在生成中，请稍后刷新"
+    primary_risks = (
+        "本次分析尚未形成可用结论，请不要基于当前占位内容做投资判断。"
+        if not failed
+        else "本次分析未成功生成，当前没有足够证据支持任何方向性判断。"
+    )
+    action = (
+        "稍后重试分析；若持续失败，请检查股票标识或外部行情服务状态。"
+        if failed
+        else "等待分析完成后再阅读证据、反方证据和失效条件。"
+    )
+    if failed and error_message:
+        action = f"{action} 错误信息：{error_message}"
+
+    return {
+        "headline_judgement": headline,
+        "key_reason_summary": [],
+        "user_fit_summary": {
+            "fit": "适合先等待完整证据后再判断。",
+            "unfit": "不适合在分析未完成或失败时直接行动。",
+        },
+        "next_step_actions": [action],
+        "primary_risks": primary_risks,
+        "review_at": valid_until or getattr(task, "expired_at", None),
+        "valid_until": valid_until,
+        "timestamp": timestamp,
+        "supporting_evidence": [],
+        "counter_evidence": [],
+        "invalidation_conditions": [
+            f"{stock_id} 的分析任务未返回完整证据前，当前占位结论无效。",
+        ],
+        "confidence_level": "low",
+        "confidence": "low",
+    }
 
 
 @router.get("", response_model=List[AnalysisRecord])
@@ -597,36 +370,11 @@ async def get_analysis_records(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Return the current user's analysis history.
-
-    新表路由（ANALYSIS_ROUTING["analysis"] == "new"）：返回 analysis_tasks 记录
-    旧表路由：返回 analyses 记录
-    """
+    """Return the current user's analysis history from analysis_tasks + analysis_results."""
     del offset
     logger.info("get_analysis_records", user_id=current_user.id, scenario=scenario)
 
-    if ANALYSIS_ROUTING.get("analysis") == "new":
-        return _get_analysis_records_from_new_tables(db, current_user.id, scenario, limit)
-
-    analysis_service = AnalysisService(db)
-    analyses = analysis_service.get_user_analyses(current_user.id, scenario, limit)
-
-    records = []
-    for analysis in analyses:
-        stock_name = analysis.stock.stock_name if analysis.stock else "未知股票"
-        records.append(
-            AnalysisRecord(
-                id=str(analysis.id),  # 统一为字符串
-                scenario=analysis.scenario.value,
-                stock_id=analysis.stock_id,
-                stock_name=stock_name,
-                created_at=analysis.created_at,
-                status=analysis.status.value,
-                headline=analysis.headline,
-            )
-        )
-
-    return records
+    return _get_analysis_records_from_new_tables(db, current_user.id, scenario, limit)
 
 
 def _get_analysis_records_from_new_tables(
@@ -677,50 +425,12 @@ async def record_focus_reason(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Persist a user-entered focus reason.
+    """Persist a user-entered focus reason (UUID path only; integer IDs are no longer supported)."""
+    if not _is_valid_uuid(analysis_id):
+        return api_error(HTTP_400_BAD_REQUEST, "INVALID_ANALYSIS_ID", "无效的分析 ID 格式，请使用 UUID", request)
 
-    迁移期兼容：同时接受 UUID 和 Integer 格式。
-    - UUID 格式 → 写入新 watchlists 表（Phase 3 迁移后）
-    - Integer 格式 → 写入旧 focus_reasons 表（向后兼容）
-    """
-    if _is_valid_uuid(analysis_id):
-        # 新表路径：写入 watchlists 表
-        if ANALYSIS_ROUTING.get("analysis") == "new":
-            return _add_watchlist_from_new_path(
-                db, current_user.id, analysis_id, reason_data, request
-            )
-        return api_error(HTTP_404_NOT_FOUND, "ANALYSIS_NOT_FOUND", "分析未找到", request)
-
-    try:
-        int_id = int(analysis_id)
-    except (ValueError, TypeError):
-        return api_error(HTTP_400_BAD_REQUEST, "INVALID_ANALYSIS_ID", "无效的分析 ID 格式", request)
-
-    logger.info("record_focus_reason", analysis_id=analysis_id, user_id=current_user.id)
-
-    analysis_service = AnalysisService(db)
-    analysis = analysis_service.get_analysis(int_id, current_user.id)
-    if not analysis:
-        return api_error(HTTP_404_NOT_FOUND, "ANALYSIS_NOT_FOUND", "分析未找到", request)
-
-    # 旧路径：写入 focus_reasons 表
-    from src.models.watchlist import FocusReason as FocusReasonModel
-    focus_reason = FocusReasonModel(
-        user_id=current_user.id,
-        analysis_id=int_id,
-        stock_id=reason_data.stock_id,
-        reason=reason_data.reason,
-    )
-    db.add(focus_reason)
-    db.commit()
-    db.refresh(focus_reason)
-    return RecordReasonResponse(
-        id=str(focus_reason.id),
-        user_id=focus_reason.user_id,
-        stock_id=focus_reason.stock_id,
-        focus_reason=focus_reason.reason or "",
-        created_at=focus_reason.created_at,
-        updated_at=focus_reason.updated_at,
+    return _add_watchlist_from_new_path(
+        db, current_user.id, analysis_id, reason_data, request
     )
 
 

@@ -48,7 +48,6 @@ class JudgmentHistory(Base):
     user = relationship("User", backref="judgment_history")
 
     __table_args__ = (
-        Index("ix_judgment_history_user_id", "user_id"),
         Index("ix_judgment_history_judgment_date", "judgment_date"),
         Index("ix_judgment_history_user_date", "user_id", "judgment_date", unique=True),
     )

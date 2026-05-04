@@ -23,6 +23,8 @@ CN_TZ = timezone(timedelta(hours=8))
 
 RISK_KEYWORDS = ("风险", "问询", "冻结", "减持", "诉讼", "监管", "终止", "亏损", "质押")
 POSITIVE_KEYWORDS = ("回购", "增持", "分红", "中标", "增长", "签约", "合同", "盈利")
+ANALYSIS_TEMPLATE_VERSION = "decision-card-v1"
+ANALYSIS_POLICY_VERSION = "p0-quality-policy-v1"
 
 
 class AnalysisGenerationService:
@@ -121,6 +123,9 @@ class AnalysisGenerationService:
         )
         return AnalysisResult(
             status="ready",
+            analysis_template_version=ANALYSIS_TEMPLATE_VERSION,
+            analysis_policy_version=ANALYSIS_POLICY_VERSION,
+            degrade_flags=[],
             intervention=intervention,
             decision_card=decision_card,
             fit_summary="这是一张偏观察型结论卡，更适合管理关注节奏，不适合直接驱动即时交易。",
@@ -227,6 +232,9 @@ class AnalysisGenerationService:
         )
         return AnalysisResult(
             status="ready",
+            analysis_template_version=ANALYSIS_TEMPLATE_VERSION,
+            analysis_policy_version=ANALYSIS_POLICY_VERSION,
+            degrade_flags=[],
             intervention=intervention,
             decision_card=decision_card,
             fit_summary="这是一张偏交易纪律检查卡，重点是限制错误动作，而不是为动作背书。",
@@ -329,6 +337,9 @@ class AnalysisGenerationService:
         )
         return AnalysisResult(
             status="ready",
+            analysis_template_version=ANALYSIS_TEMPLATE_VERSION,
+            analysis_policy_version=ANALYSIS_POLICY_VERSION,
+            degrade_flags=[],
             intervention=intervention,
             decision_card=decision_card,
             fit_summary="这是一张偏行为复盘卡，重点是优化下一次决策流程，而不是回头评判对错本身。",
@@ -387,7 +398,10 @@ class AnalysisGenerationService:
             risk_score=0,
         )
         return AnalysisResult(
-            status="ready",
+            status="partial_ready",
+            analysis_template_version=ANALYSIS_TEMPLATE_VERSION,
+            analysis_policy_version=ANALYSIS_POLICY_VERSION,
+            degrade_flags=["missing_market_data", "insufficient_evidence"],
             intervention=intervention,
             decision_card=decision_card,
             fit_summary="这是一张信息不足提示卡，目的是阻止在低数据质量下继续推进决策。",

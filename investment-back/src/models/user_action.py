@@ -51,7 +51,5 @@ class UserAction(Base):
     user = relationship("User", backref="user_actions")
 
     __table_args__ = (
-        Index("ix_user_actions_user_id", "user_id"),
-        Index("ix_user_actions_action_type", "action_type"),
         Index("ix_user_actions_created_at", "created_at"),
     )

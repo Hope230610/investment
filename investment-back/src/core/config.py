@@ -62,6 +62,10 @@ class Settings(BaseSettings):
     STOCK_DATA_CACHE_SECONDS: int = 180
     STOCK_NOTICE_LOOKBACK_DAYS: int = 30
 
+    # Redis (RQ task queue)
+    REDIS_URL: str = "redis://localhost:6379/0"
+    RQ_ASYNC: bool = True  # False = use RQ worker process; True = in-process (dev only)
+
     @field_validator("DEBUG", mode="before")
     @classmethod
     def parse_debug_value(cls, value):

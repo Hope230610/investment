@@ -98,8 +98,6 @@ class AnalysisTask(TimestampMixin, Base):
     )
 
     __table_args__ = (
-        Index("ix_analysis_tasks_user_id", "user_id"),
-        Index("ix_analysis_tasks_stock_id", "stock_id"),
         Index("ix_analysis_tasks_scenario", "scenario"),
         Index("ix_analysis_tasks_status", "status"),
         Index("ix_analysis_tasks_expired_at", "expired_at"),

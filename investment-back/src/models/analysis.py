@@ -36,7 +36,14 @@ class Analysis(TimestampMixin, Base):
     user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
     stock_id = Column(String(20), ForeignKey("stocks.stock_id"), index=True, nullable=False)
     # Basic info
-    scenario = Column(Enum(InteractionScenario), nullable=False)
+    scenario = Column(
+        Enum(
+            InteractionScenario,
+            name="interactionscenario",
+            values_callable=lambda cls: [e.value for e in cls],
+        ),
+        nullable=False,
+    )
     status = Column(Enum(AnalysisStatus), default=AnalysisStatus.PROCESSING, nullable=False)
     headline = Column(String(255), nullable=True)
     # Scenario payload (input data)

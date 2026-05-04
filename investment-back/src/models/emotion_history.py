@@ -45,7 +45,6 @@ class EmotionHistory(Base):
     user = relationship("User", backref="emotion_history")
 
     __table_args__ = (
-        Index("ix_emotion_history_user_id", "user_id"),
         Index("ix_emotion_history_recorded_date", "recorded_date"),
         Index("ix_emotion_history_user_date", "user_id", "recorded_date", unique=True),
     )
