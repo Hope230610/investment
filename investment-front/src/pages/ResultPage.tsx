@@ -458,24 +458,65 @@ export default function ResultPage() {
     const failReason = analysis.degrade_flags && analysis.degrade_flags.length > 0
       ? analysis.degrade_flags[0].replace('analysis_error: ', '')
       : null;
+    const fallbackActions = decisionCard?.next_step_actions?.length
+      ? decisionCard.next_step_actions
+      : ['稍后重新发起分析，并先检查股票代码、行情服务和网络状态。'];
+    const fallbackBoundaries = decisionCard?.invalidation_conditions?.length
+      ? decisionCard.invalidation_conditions
+      : ['本次分析没有形成完整证据前，当前占位结论无效。'];
+
     return (
       <div className="p-6 min-h-[60vh] flex items-center justify-center">
-        <div className="bg-white rounded-3xl border border-stone-100 p-6 shadow-sm max-w-sm w-full space-y-4 text-center">
-          <div className="w-12 h-12 mx-auto rounded-full bg-red-50 flex items-center justify-center">
-            <AlertTriangle className="text-red-500" size={22} />
+        <div className="bg-white rounded-3xl border border-stone-100 p-6 shadow-sm max-w-sm w-full space-y-5">
+          <div className="text-center space-y-3">
+            <div className="w-12 h-12 mx-auto rounded-full bg-red-50 flex items-center justify-center">
+              <AlertTriangle className="text-red-500" size={22} />
+            </div>
+            <div className="space-y-2">
+              <h2 className="text-lg font-bold">分析生成失败</h2>
+              <p className="text-sm text-stone-500 leading-relaxed">
+                {failReason
+                  ? `失败原因：${formatDegradeFlag(failReason)}。当前没有足够证据支持方向性判断。`
+                  : '这次没有成功拿到完整数据，当前没有足够证据支持方向性判断。'}
+              </p>
+            </div>
           </div>
-          <div className="space-y-2">
-            <h2 className="text-lg font-bold">分析生成失败</h2>
-            <p className="text-sm text-stone-500 leading-relaxed">
-              {failReason
-                ? `失败原因：${failReason}。建议稍后重新发起分析。`
-                : '这次没有成功拿到完整数据，建议稍后重新发起分析。'}
-            </p>
+
+          <div className="rounded-2xl bg-stone-50 border border-stone-100 p-4 space-y-3">
+            <div className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">下一步</div>
+            <div className="space-y-2">
+              {fallbackActions.map((action, index) => (
+                <div key={`${action}-${index}`} className="flex gap-2 items-start text-xs text-stone-600 leading-relaxed">
+                  <RefreshCw size={13} className="text-stone-400 shrink-0 mt-0.5" />
+                  <span>{action}</span>
+                </div>
+              ))}
+            </div>
           </div>
+
+          <div className="rounded-2xl bg-amber-50 border border-amber-100 p-4 space-y-3">
+            <div className="text-[10px] font-bold text-amber-600 uppercase tracking-widest">检查项</div>
+            <div className="space-y-2 text-xs text-amber-800 leading-relaxed">
+              <div>确认股票代码是否正确，必要时回到搜索页重新选择。</div>
+              <div>如果外部行情或公告接口暂时不可用，稍后重试。</div>
+              <div>不要基于失败占位内容做投资判断。</div>
+            </div>
+          </div>
+
+          <div className="rounded-2xl bg-red-50 border border-red-100 p-4 space-y-2">
+            <div className="text-[10px] font-bold text-red-600 uppercase tracking-widest">失效边界</div>
+            {fallbackBoundaries.map((item, index) => (
+              <div key={`${item}-${index}`} className="text-xs text-red-700 leading-relaxed">
+                {item}
+              </div>
+            ))}
+          </div>
+
           <button
             onClick={() => window.location.reload()}
-            className="w-full py-3 bg-ink text-white rounded-2xl font-bold"
+            className="w-full py-3 bg-ink text-white rounded-2xl font-bold flex items-center justify-center gap-2"
           >
+            <RefreshCw size={16} />
             重新加载
           </button>
         </div>
