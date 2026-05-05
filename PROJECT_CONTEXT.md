@@ -384,3 +384,169 @@ P2 目标结果：
 
 `以 P0 修基础、以 P1 补闭环、以 P2 做保障，再进入正式上线。`
 
+---
+
+## 13. 最新项目状态快照（2026-05-05）
+
+本节为最新上下文，优先级高于前文 2026-03-26 的旧状态判断。
+
+### 13.1 当前结论
+
+项目已经从早期“可演示 / 可内测 MVP”推进到 **P3 Release Candidate Review 候选阶段**。
+
+当前 P0/P1/P2/P3 的主要工程骨架、页面、API、迁移和本地验收记录已经存在，可以继续做上线前评审、修补和加固；但仍不应宣称为正式生产可上线状态。
+
+产品定位保持不变：
+
+`AI 投资决策助手 = 投资决策教练 / 决策副驾驶，不是荐股、喊单或自动交易工具。`
+
+### 13.2 当前已完成能力
+
+P0/P1 内测可信基础线：
+
+- 三大核心场景：单股咨询、交易前自检、交易后复盘。
+- 分析任务创建、异步生成、前端轮询结果。
+- 结构化决策卡字段契约。
+- Learning Feedback 闭环。
+- 提醒中心与今日关注入口。
+- 统一错误响应契约。
+- 分析失败兜底展示。
+- 合规表达守卫。
+- 历史验收记录：backend pytest `76 passed`，frontend test `48 passed`，Mock/Real Full E2E `21 passed`。
+
+P2 持仓与组合 MVP：
+
+- 手动维护持仓快照：成本价、数量、当前价、浮动盈亏、持仓占比、更新时间。
+- 交易流水：买入/卖出、价格、数量、时间、交易理由。
+- 组合概览：总市值估算、总盈亏、最大单票占比、集中度提醒、风险提示。
+- 分析任务创建时注入持仓上下文。
+- 结果页展示持仓背景。
+- 提醒中心聚合持仓集中度和浮亏复盘提醒。
+- 前端新增 `/portfolio` 页面。
+- 历史验收记录：backend pytest `79 passed`，frontend test `50 passed`，Playwright E2E `22 passed`。
+
+P3 上线候选能力：
+
+- `GrowthService`：将历史复盘、判断质量、情绪记录和行为干预聚合为 caution context。
+- `AiEvalService`：覆盖合规表达、结构完整性、不确定性、输出标记和持仓上下文来源。
+- 分享型结构化卡片：分享快照模型、服务、API、ResultPage 入口和公开分享页。
+- 初步商业化边界：free/pro plan、usage counter、daily analysis/share card limit。
+- Prompt / 模板版本化：结果 metadata 记录 template/provider/model/schema/generated/data snapshot 字段。
+- 最新验收记录：P2/P3 focused backend tests `36 passed`，backend full pytest `113 passed`，frontend tests `52 passed`，MockMarket full acceptance `22 passed`，Alembic current `013 head`。
+
+### 13.3 当前主要路由
+
+前端：
+
+- `/login`
+- `/`
+- `/profile`
+- `/watchlist`
+- `/stock/search`
+- `/analysis/single-stock`
+- `/analysis/pre-trade`
+- `/analysis/post-trade`
+- `/analysis/:id/result`
+- `/reviews`
+- `/records`
+- `/notifications`
+- `/portfolio`
+- `/share/:shareId`
+
+后端：
+
+- `/api/v1/user/*`
+- `/api/v1/stocks/*`
+- `/api/v1/analysis/*`
+- `/api/v1/records`
+- `/api/v1/reviews`
+- `/api/v1/watchlist`
+- `/api/v1/notifications`
+- `/api/v1/portfolio/*`
+- `/api/v1/p3/*`
+
+### 13.4 当前已知风险
+
+- Redis/RQ `RQ_ASYNC=false` 独立 worker 路径仍未做生产化拓扑验收。
+- 真实行情依赖外部接口，速度和稳定性受网络影响。
+- 当前价格不是实时交易级行情，不能作为实时交易依据表达。
+- AI eval 仍是确定性规则，样例集需要继续扩充。
+- 分享卡片合规文案、免责声明和 sanitizer 规则仍需人工 review。
+- free/pro limit 数值需要产品确认。
+- 未接真实支付。
+- 未接真实 LLM provider。
+- Vite build 仍有主 chunk 超过 500KB warning。
+- 012/013 迁移保留了本地脏库兼容逻辑，正式环境应做预迁移 schema 检查和运维确认。
+
+### 13.5 后续修改优先级
+
+上线前优先：
+
+1. 合规人工 review 分享卡片、免责声明和 sanitizer 规则。
+2. Redis/RQ worker 生产拓扑验证。
+3. 预发环境全链路 Alembic migration replay。
+4. Fresh E2E test DB 下重新跑完整 MockMarket E2E。
+5. 明确 free/pro plan limit 数值。
+6. 确认真实行情可用性、时间戳与非实时提示表达。
+
+继续加固：
+
+1. 扩充 AI eval 样例，覆盖中英文违规表达和真实模型输出。
+2. Portfolio API 增加更系统的跨用户隔离集成测试。
+3. 提醒摘要接口轻量化，避免真实行情聚合阻塞页面。
+4. 前端拆包，处理 Vite chunk warning。
+5. 接入真实 LLM provider 前补完整 prompt/version/eval 流程。
+
+暂缓：
+
+1. 自动交易。
+2. 真实券商账户接入。
+3. 社区荐股或排行榜。
+4. 收益预测和目标价承诺。
+5. 复杂 AI eval 管理后台。
+
+### 13.6 常用验证命令
+
+后端：
+
+```powershell
+cd F:\investment\investment-back
+python -m compileall src tests scripts
+pytest -q
+alembic current
+alembic upgrade head
+```
+
+前端：
+
+```powershell
+cd F:\investment\investment-front
+npm run lint
+npm run test -- --run
+npm run build
+npm run test:e2e -- --list
+```
+
+Mock 行情完整验收：
+
+```powershell
+cd F:\investment\investment-front
+powershell -ExecutionPolicy Bypass -File .\scripts\run-e2e-acceptance.ps1 -PrepareDb -MockMarket -Full
+```
+
+真实行情完整验收：
+
+```powershell
+cd F:\investment\investment-front
+powershell -ExecutionPolicy Bypass -File .\scripts\run-e2e-acceptance.ps1 -PrepareDb -Full
+```
+
+### 13.7 关键参考文档
+
+- `need.md`：项目定位、原则和路线图。
+- `investment-back/P0_P1_INTERNAL_ACCEPTANCE.md`：P0/P1 内测验收。
+- `investment-back/P2_MVP_ACCEPTANCE.md`：P2 持仓/组合 MVP 验收。
+- `investment-back/P3_ONLINE_RELEASE_PLAN.md`：P3 上线候选计划。
+- `investment-back/P3_ONLINE_RELEASE_ACCEPTANCE.md`：P3 验收与 RC review pack。
+- `investment-front/README.md`：前端实现说明。
+- `investment-back/README.md`：后端基础说明。
