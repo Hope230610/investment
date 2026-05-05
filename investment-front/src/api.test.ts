@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { apiRequest, ApiError } from './api';
+import { apiRequest, ApiError, getPortfolioOverview, postHolding, postTransaction } from './api';
 
 
 function mockJsonResponse(status: number, body: unknown) {
@@ -50,5 +50,37 @@ describe('api error parsing', () => {
       message: '请求参数校验失败：stock_id: Field required；scenario: Input should be valid',
       retryable: false,
     } satisfies Partial<ApiError>);
+  });
+});
+
+describe('portfolio api helpers', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it('loads portfolio overview from the P2 endpoint', async () => {
+    vi.stubGlobal('localStorage', { getItem: () => null, removeItem: vi.fn(), setItem: vi.fn() });
+    mockJsonResponse(200, {
+      summary: { holding_count: 0, total_market_value: 0, total_cost_value: 0, total_unrealized_pnl: 0, total_unrealized_pnl_rate: 0, max_position_weight: 0, risk_tips: [] },
+      holdings: [],
+    });
+
+    await expect(getPortfolioOverview()).resolves.toMatchObject({
+      summary: { holding_count: 0 },
+      holdings: [],
+    });
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/v1/portfolio/overview', expect.objectContaining({ method: 'GET' }));
+  });
+
+  it('posts holding and transaction payloads as json', async () => {
+    vi.stubGlobal('localStorage', { getItem: () => null, removeItem: vi.fn(), setItem: vi.fn() });
+    mockJsonResponse(200, { id: 'h1' });
+    await postHolding({ stock_id: 'SH600519', stock_name: '贵州茅台', market: 'SH', quantity: 10, cost_price: 100, current_price: 110 });
+    expect(globalThis.fetch).toHaveBeenLastCalledWith('/api/v1/portfolio/holdings', expect.objectContaining({ method: 'POST' }));
+
+    mockJsonResponse(200, { id: 't1' });
+    await postTransaction({ stock_id: 'SH600519', stock_name: '贵州茅台', market: 'SH', side: 'buy', price: 100, quantity: 10, reason: 'test' });
+    expect(globalThis.fetch).toHaveBeenLastCalledWith('/api/v1/portfolio/transactions', expect.objectContaining({ method: 'POST' }));
   });
 });

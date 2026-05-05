@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { useParams, useLocation } from 'react-router-dom';
+import { Link, useParams, useLocation } from 'react-router-dom';
 import {
   AlertCircle,
   AlertTriangle,
@@ -10,13 +10,14 @@ import {
   Info,
   MessageSquare,
   RefreshCw,
+  Share2,
   ShieldAlert,
   Star,
   X,
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 
-import { apiGet, apiPost, deleteWatchlistItem, getLearningHistory, getWatchlistItems, patchReviewResult, postLearningFeedback, postWatchlistItem } from '../api';
+import { apiGet, apiPost, createShareSnapshot, deleteWatchlistItem, getLearningHistory, getWatchlistItems, patchReviewResult, postLearningFeedback, postWatchlistItem } from '../api';
 import type { AnalysisDetail, OutputMarkType } from '../types';
 import { addFocusReason, cn } from '../utils';
 import LearningFeedbackCard from '../components/LearningFeedbackCard';
@@ -45,6 +46,36 @@ function formatDate(value?: string | null) {
 function formatPrice(value?: number | null) {
   if (value === null || value === undefined) return '--';
   return value.toFixed(2);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function toFiniteNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function toDisplayText(value: unknown): string {
+  return typeof value === 'string' && value.trim() ? value : '--';
+}
+
+function formatMaybeNumber(value: unknown, fractionDigits = 2) {
+  const numberValue = toFiniteNumber(value);
+  return numberValue === null ? '--' : numberValue.toFixed(fractionDigits);
+}
+
+export function normalizeHoldingContext(value: unknown) {
+  if (!isRecord(value)) return null;
+  const weight = toFiniteNumber(value.weight);
+  return {
+    stockName: toDisplayText(value.stock_name),
+    weightPercent: weight === null ? '--' : (weight * 100).toFixed(1),
+    costPrice: formatMaybeNumber(value.cost_price),
+    currentPrice: formatMaybeNumber(value.current_price),
+    unrealizedPnl: formatMaybeNumber(value.unrealized_pnl),
+    positionUpdatedAt: typeof value.position_updated_at === 'string' ? value.position_updated_at : null,
+  };
 }
 
 
@@ -131,6 +162,7 @@ export default function ResultPage() {
   const [watchlistItemId, setWatchlistItemId] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [savingReason, setSavingReason] = useState(false);
+  const [sharing, setSharing] = useState(false);
 
   // Learning feedback card state
   const [showFeedback, setShowFeedback] = useState(false);
@@ -354,6 +386,7 @@ export default function ResultPage() {
   const dataAsOf = analysis?.data_as_of;
   const confidence = decisionCard?.confidence ?? decisionCard?.confidence_level ?? 'medium';
   const isExpired = validUntil ? Date.now() > new Date(validUntil).getTime() : analysis?.status === 'expired';
+  const holdingContext = normalizeHoldingContext(analysis?.holding_context);
 
   const handleRemoveFromWatchlist = async () => {
     if (!watchlistItemId) return;
@@ -420,6 +453,28 @@ export default function ResultPage() {
       window.setTimeout(() => setToastMessage(null), 2400);
     } finally {
       setSavingReason(false);
+    }
+  };
+
+  const handleCreateShare = async () => {
+    if (!id || sharing) return;
+    setSharing(true);
+    try {
+      const snapshot = await createShareSnapshot({
+        source_type: 'analysis',
+        source_id: id,
+        privacy_level: 'unlisted',
+        expires_in_days: 30,
+      });
+      const url = `${window.location.origin}/share/${snapshot.share_id}`;
+      await navigator.clipboard?.writeText(url);
+      setToastMessage('分享卡片已生成，链接已复制');
+      window.setTimeout(() => setToastMessage(null), 2400);
+    } catch (shareError) {
+      setToastMessage(shareError instanceof Error ? shareError.message : '分享卡片生成失败');
+      window.setTimeout(() => setToastMessage(null), 2400);
+    } finally {
+      setSharing(false);
     }
   };
 
@@ -593,6 +648,30 @@ export default function ResultPage() {
               </div>
             ))}
           </div>
+        </motion.div>
+      )}
+
+      {holdingContext && (
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="rounded-2xl border border-amber-100 bg-amber-50 p-4"
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-widest text-amber-600">当前持仓上下文</div>
+              <div className="mt-1 text-sm font-bold text-amber-900">
+                {holdingContext.stockName} 占组合约 {holdingContext.weightPercent}%
+              </div>
+            </div>
+            <Link to="/portfolio" className="rounded-xl bg-white px-3 py-2 text-xs font-bold text-amber-700">
+              查看
+            </Link>
+          </div>
+          <p className="mt-2 text-xs leading-relaxed text-amber-800">
+            成本 {holdingContext.costPrice}，现价 {holdingContext.currentPrice}，浮动盈亏约 {holdingContext.unrealizedPnl}。
+            持仓价格更新于 {formatDateTime(holdingContext.positionUpdatedAt)}，可能不是实时价格；以下内容用于辅助判断，不构成买卖指令。
+          </p>
         </motion.div>
       )}
 
@@ -1078,6 +1157,14 @@ export default function ResultPage() {
 
       <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white/80 backdrop-blur-xl border-t border-stone-100 p-4 safe-bottom z-30">
         <div className="flex gap-3">
+          <button
+            onClick={handleCreateShare}
+            disabled={sharing}
+            className="w-12 h-12 shrink-0 bg-stone-100 text-ink rounded-xl font-bold text-sm hover:bg-stone-200 transition-colors flex items-center justify-center disabled:opacity-40"
+            title="生成分享卡片"
+          >
+            <Share2 size={18} />
+          </button>
           <button
             onClick={() => setShowFocusReasonModal(true)}
             className="flex-1 py-3 bg-stone-100 text-ink rounded-xl font-bold text-sm hover:bg-stone-200 transition-colors"

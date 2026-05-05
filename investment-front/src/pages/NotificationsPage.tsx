@@ -22,24 +22,28 @@ const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
   review_reminder: '复盘提醒',
   watchlist_alert: '观察池异动',
   analysis_invalidation: '结论可能失效',
+  portfolio_risk: '持仓风险',
 };
 
 const NOTIFICATION_TYPE_ICONS: Record<string, React.ElementType> = {
   review_reminder: Calendar,
   watchlist_alert: TrendingUp,
   analysis_invalidation: AlertTriangle,
+  portfolio_risk: AlertCircle,
 };
 
 const NOTIFICATION_TYPE_COLORS: Record<string, string> = {
   review_reminder: 'bg-amber-50 border-amber-100',
   watchlist_alert: 'bg-blue-50 border-blue-100',
   analysis_invalidation: 'bg-red-50 border-red-100',
+  portfolio_risk: 'bg-amber-50 border-amber-100',
 };
 
 const NOTIFICATION_TYPE_BADGE_COLORS: Record<string, string> = {
   review_reminder: 'bg-amber-100 text-amber-700',
   watchlist_alert: 'bg-blue-100 text-blue-700',
   analysis_invalidation: 'bg-red-100 text-red-700',
+  portfolio_risk: 'bg-amber-100 text-amber-700',
 };
 
 function UrgencyDot({ urgency }: { urgency: string }) {
@@ -259,7 +263,7 @@ export default function NotificationsPage() {
       ) : (
         <div className="space-y-3">
           {/* 按类型分组 */}
-          {(['review_reminder', 'watchlist_alert', 'analysis_invalidation'] as const).map((type) => {
+          {(['review_reminder', 'watchlist_alert', 'analysis_invalidation', 'portfolio_risk'] as const).map((type) => {
             const items = notifications.filter((n) => n.type === type);
             if (items.length === 0) return null;
 

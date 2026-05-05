@@ -5,7 +5,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, Navigate, useLocation } from 'react-router-dom';
-import { Home, History, User, ChevronLeft, Star, Bell } from 'lucide-react';
+import { Home, History, User, ChevronLeft, Star, Bell, PieChart } from 'lucide-react';
 
 import { AuthProvider, RequireAuth } from './auth-context';
 import { cn } from './utils';
@@ -25,6 +25,8 @@ import ReviewsPage from './pages/ReviewsPage';
 import RecordsPage from './pages/RecordsPage';
 import WatchlistPage from './pages/WatchlistPage';
 import NotificationsPage from './pages/NotificationsPage';
+import PortfolioPage from './pages/PortfolioPage';
+import SharePage from './pages/SharePage';
 
 function AppShell({ children }: { children: React.ReactNode }) {
   const location = useLocation();
@@ -34,7 +36,8 @@ function AppShell({ children }: { children: React.ReactNode }) {
 
   const [notifSummary, setNotifSummary] = useState<NotificationSummary | null>(null);
 
-  const MAIN_NAV_PATHS = ['/', '/watchlist', '/notifications', '/records', '/me'];
+  const MAIN_NAV_PATHS = ['/', '/portfolio', '/watchlist', '/notifications', '/records', '/me'];
+  const shouldRefreshNotificationBadge = MAIN_NAV_PATHS.some((p) => location.pathname === p);
 
   const fetchNotifSummary = () => {
     getNotificationSummary()
@@ -44,20 +47,25 @@ function AppShell({ children }: { children: React.ReactNode }) {
 
   // Refresh when returning to any main nav page
   useEffect(() => {
-    if (MAIN_NAV_PATHS.some((p) => location.pathname === p)) {
+    if (shouldRefreshNotificationBadge) {
       fetchNotifSummary();
     }
-  }, [location.pathname]);
+  }, [shouldRefreshNotificationBadge]);
 
   // Refresh when window regains focus
   useEffect(() => {
-    const onFocus = () => fetchNotifSummary();
+    const onFocus = () => {
+      if (shouldRefreshNotificationBadge) {
+        fetchNotifSummary();
+      }
+    };
     window.addEventListener('focus', onFocus);
     return () => window.removeEventListener('focus', onFocus);
-  }, []);
+  }, [shouldRefreshNotificationBadge]);
 
   const navItems = [
     { path: '/', label: '首页', icon: Home },
+    { path: '/portfolio', label: '持仓', icon: PieChart },
     { path: '/watchlist', label: '观察', icon: Star },
     { path: '/notifications', label: '提醒', icon: Bell },
     { path: '/records', label: '记录', icon: History },
@@ -85,7 +93,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
       <main className="flex-1 pb-24">{children}</main>
 
       {!isInputPage && !isResultPage && (
-        <nav className="safe-bottom fixed bottom-0 left-1/2 z-40 flex h-16 w-full max-w-md -translate-x-1/2 items-center justify-between border-t border-stone-200 bg-white px-6">
+        <nav className="safe-bottom fixed bottom-0 left-1/2 z-40 flex h-16 w-full max-w-md -translate-x-1/2 items-center justify-between border-t border-stone-200 bg-white px-4">
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = location.pathname === item.path;
@@ -139,11 +147,13 @@ export default function App() {
             <Route path="/me" element={<RequireAuth><MePage /></RequireAuth>} />
             <Route path="/profile" element={<RequireAuth><ProfilePage /></RequireAuth>} />
             <Route path="/watchlist" element={<RequireAuth><WatchlistPage /></RequireAuth>} />
+            <Route path="/portfolio" element={<RequireAuth><PortfolioPage /></RequireAuth>} />
             <Route path="/stock/search" element={<RequireAuth><StockSearchPage /></RequireAuth>} />
             <Route path="/analysis/single-stock" element={<RequireAuth><SingleStockInput /></RequireAuth>} />
             <Route path="/analysis/pre-trade" element={<RequireAuth><PreTradeInput /></RequireAuth>} />
             <Route path="/analysis/post-trade" element={<RequireAuth><PostTradeInput /></RequireAuth>} />
             <Route path="/analysis/:id/result" element={<RequireAuth><ResultPage /></RequireAuth>} />
+            <Route path="/share/:shareId" element={<SharePage />} />
             <Route path="/notifications" element={<RequireAuth><NotificationsPage /></RequireAuth>} />
             <Route path="/reviews" element={<RequireAuth><ReviewsPage /></RequireAuth>} />
             <Route path="/records" element={<RequireAuth><RecordsPage /></RequireAuth>} />

@@ -52,8 +52,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), 8000);
       try {
-        const currentUser = await apiGet<AuthUser>('/api/v1/user');
+        const currentUser = await apiGet<AuthUser>('/api/v1/user', { signal: controller.signal });
         if (cancelled) {
           return;
         }
@@ -68,6 +70,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setSessionError('会话已过期，请重新登录');
         }
       } finally {
+        window.clearTimeout(timeoutId);
         if (!cancelled) {
           setIsBootstrapping(false);
         }

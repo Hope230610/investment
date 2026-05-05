@@ -16,6 +16,7 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   workers: 1,
   reporter: process.env.CI ? [['github']] : [['list']],
+  globalTimeout: 12 * 60_000,
   webServer: [
     {
       command: 'cd ../investment-back && python -m uvicorn main:app --host 0.0.0.0 --port 8000',

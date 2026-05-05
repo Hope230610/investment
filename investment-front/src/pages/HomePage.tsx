@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertCircle, AlertTriangle, Bell, History, Search, ShieldCheck, Star, UserCircle } from 'lucide-react';
+import { AlertCircle, AlertTriangle, Bell, History, PieChart, Search, ShieldCheck, Star, UserCircle } from 'lucide-react';
 
-import { apiGet, getWatchlistItems, getNotifications } from '../api';
-import type { AnalysisRecord, ReviewTask, UserProfile, WatchlistApiItem, NotificationListResponse, NotificationItem } from '../types';
+import { apiGet, getWatchlistItems, getNotificationSummary, getPortfolioOverview } from '../api';
+import type { AnalysisRecord, ReviewTask, UserProfile, WatchlistApiItem, NotificationItem, NotificationSummary, PortfolioOverview } from '../types';
 import { SCENARIOS, computeUnfinishedReviews, sortUnfinishedReviews, cn } from '../utils';
 
 
@@ -12,17 +12,19 @@ export default function HomePage() {
   const [reviews, setReviews] = useState<ReviewTask[]>([]);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [watchlist, setWatchlist] = useState<WatchlistApiItem[]>([]);
-  const [notifications, setNotifications] = useState<NotificationListResponse | null>(null);
+  const [notificationSummary, setNotificationSummary] = useState<NotificationSummary | null>(null);
+  const [portfolio, setPortfolio] = useState<PortfolioOverview | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
     const loadHomeData = async () => {
-      const [recordsResult, reviewsResult, profileResult, notifResult] = await Promise.allSettled([
+      const [recordsResult, reviewsResult, profileResult, notifResult, portfolioResult] = await Promise.allSettled([
         apiGet<AnalysisRecord[]>('/api/v1/analysis'),
         apiGet<ReviewTask[]>('/api/v1/reviews'),
         apiGet<UserProfile>('/api/v1/user/profile'),
-        getNotifications(),
+        getNotificationSummary(),
+        getPortfolioOverview(),
       ]);
 
       if (cancelled) {
@@ -42,7 +44,11 @@ export default function HomePage() {
       }
 
       if (notifResult.status === 'fulfilled') {
-        setNotifications(notifResult.value);
+        setNotificationSummary(notifResult.value);
+      }
+
+      if (portfolioResult.status === 'fulfilled') {
+        setPortfolio(portfolioResult.value);
       }
     };
 
@@ -57,6 +63,9 @@ export default function HomePage() {
   }, []);
 
   const pendingReviews = sortUnfinishedReviews(computeUnfinishedReviews(reviews));
+  const notifications = notificationSummary
+    ? { summary: notificationSummary, notifications: [] as NotificationItem[] }
+    : null;
 
   return (
     <div className="p-4 space-y-6">
@@ -105,6 +114,37 @@ export default function HomePage() {
               </span>
             ))}
           </div>
+        </Link>
+      )}
+
+      {portfolio && portfolio.summary.holding_count > 0 && (
+        <Link to="/portfolio" className="block rounded-2xl border border-stone-100 bg-white p-4 card-shadow">
+          <div className="mb-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <PieChart size={20} className="text-stone-400" />
+              <span className="font-semibold">组合概览</span>
+            </div>
+            <span className="text-xs text-blue-600">查看持仓</span>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <div className="rounded-lg bg-stone-50 p-2">
+              <div className="text-[10px] text-stone-400">总市值</div>
+              <div className="mt-1 text-sm font-bold">¥{portfolio.summary.total_market_value.toFixed(0)}</div>
+            </div>
+            <div className="rounded-lg bg-stone-50 p-2">
+              <div className="text-[10px] text-stone-400">浮动盈亏</div>
+              <div className={cn('mt-1 text-sm font-bold', portfolio.summary.total_unrealized_pnl >= 0 ? 'text-red-600' : 'text-emerald-600')}>
+                ¥{portfolio.summary.total_unrealized_pnl.toFixed(0)}
+              </div>
+            </div>
+            <div className="rounded-lg bg-stone-50 p-2">
+              <div className="text-[10px] text-stone-400">最大占比</div>
+              <div className="mt-1 text-sm font-bold">{(portfolio.summary.max_position_weight * 100).toFixed(1)}%</div>
+            </div>
+          </div>
+          {portfolio.summary.concentration_alert && (
+            <p className="mt-3 line-clamp-2 text-xs text-amber-700">{portfolio.summary.concentration_alert}</p>
+          )}
         </Link>
       )}
 

@@ -1,5 +1,5 @@
 import { clearAuthSession, getAccessToken } from './auth';
-import type { WatchlistApiItem } from './types';
+import type { CreateSharePayload, HoldingPayload, ShareSnapshot, TransactionPayload, WatchlistApiItem } from './types';
 
 /** 统一错误响应结构（与后端 ErrorResponse 对应） */
 export interface UnifiedError {
@@ -185,6 +185,10 @@ export function apiPut<T>(
   return apiRequest<T>(url, { ...options, method: 'PUT', body });
 }
 
+export function apiDelete<T>(url: string, options: Omit<ApiRequestOptions, 'method' | 'body'> = {}) {
+  return apiRequest<T>(url, { ...options, method: 'DELETE' });
+}
+
 // ─── Watchlist v2 ───────────────────────────────────────────────────────────────
 
 export interface WatchlistUpsertPayload {
@@ -220,6 +224,57 @@ export function deleteWatchlistItem(itemId: string) {
     method: 'DELETE',
     auth: true,
   });
+}
+
+// Portfolio
+
+export function getPortfolioOverview() {
+  return apiGet<import('./types').PortfolioOverview>('/api/v1/portfolio/overview');
+}
+
+export function postHolding(payload: HoldingPayload) {
+  return apiPost<import('./types').HoldingItem>(
+    '/api/v1/portfolio/holdings',
+    payload as unknown as Record<string, unknown>,
+  );
+}
+
+export function putHolding(holdingId: string, payload: Partial<HoldingPayload>) {
+  return apiPut<import('./types').HoldingItem>(
+    `/api/v1/portfolio/holdings/${holdingId}`,
+    payload as unknown as Record<string, unknown>,
+  );
+}
+
+export function deleteHolding(holdingId: string) {
+  return apiDelete<{ message: string }>(`/api/v1/portfolio/holdings/${holdingId}`);
+}
+
+export function getTransactions(stockId?: string) {
+  const query = stockId ? `?stock_id=${encodeURIComponent(stockId)}` : '';
+  return apiGet<import('./types').TransactionItem[]>(`/api/v1/portfolio/transactions${query}`);
+}
+
+export function postTransaction(payload: TransactionPayload) {
+  return apiPost<import('./types').TransactionItem>(
+    '/api/v1/portfolio/transactions',
+    payload as unknown as Record<string, unknown>,
+  );
+}
+
+export function createShareSnapshot(payload: CreateSharePayload) {
+  return apiPost<ShareSnapshot>(
+    '/api/v1/p3/shares',
+    payload as unknown as Record<string, unknown>,
+  );
+}
+
+export function getPublicShareSnapshot(shareId: string) {
+  return apiGet<ShareSnapshot>(`/api/v1/p3/public/shares/${shareId}`, { auth: false });
+}
+
+export function revokeShareSnapshot(shareId: string) {
+  return apiDelete<{ message: string }>(`/api/v1/p3/shares/${shareId}`);
 }
 
 // ─── Learning Feedback ──────────────────────────────────────────────────────────

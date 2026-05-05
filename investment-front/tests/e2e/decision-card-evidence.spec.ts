@@ -96,7 +96,7 @@ test('counter_evidence section rendered in UI', async ({ page }) => {
   const result = await pollAnalysisResult<AnalysisDetail>(page, analysisId, 'ready', 60_000);
 
   if (result.decision_card.counter_evidence.length > 0) {
-    await expect(page.getByText(/反方证据/i)).toBeVisible();
+    await expect(page.getByRole('heading', { name: '反方证据' })).toBeVisible();
     // Counter evidence items should start with "C1", "C2" ... labels
     await expect(page.locator('text=/^C\\d/i').first()).toBeVisible();
   }

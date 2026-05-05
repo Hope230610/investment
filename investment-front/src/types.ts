@@ -231,6 +231,117 @@ export interface AnalysisDetail {
   stock_industry?: string | null;
   // 场景透传（intent / trigger_reason / emotion_level 等，用于标签推断）
   scenario_payload?: Record<string, unknown> | null;
+  holding_context?: Record<string, unknown> | null;
+}
+
+export interface HoldingItem {
+  id: string;
+  user_id: number;
+  stock_id: string;
+  stock_name: string;
+  market: string;
+  quantity: number;
+  cost_price: number;
+  current_price: number;
+  market_value: number;
+  cost_value: number;
+  unrealized_pnl: number;
+  unrealized_pnl_rate: number;
+  weight: number;
+  note?: string | null;
+  position_updated_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface HoldingPayload {
+  stock_id: string;
+  stock_name?: string;
+  market?: string;
+  quantity: number;
+  cost_price: number;
+  current_price: number;
+  note?: string | null;
+}
+
+export type TransactionSide = 'buy' | 'sell';
+
+export interface TransactionItem {
+  id: string;
+  user_id: number;
+  stock_id: string;
+  stock_name: string;
+  market: string;
+  side: TransactionSide;
+  price: number;
+  quantity: number;
+  amount: number;
+  traded_at: string;
+  reason?: string | null;
+  analysis_task_id?: string | null;
+  pre_trade_check_id?: string | null;
+  review_task_id?: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TransactionPayload {
+  stock_id: string;
+  stock_name?: string;
+  market?: string;
+  side: TransactionSide;
+  price: number;
+  quantity: number;
+  traded_at?: string;
+  reason?: string | null;
+  analysis_task_id?: string | null;
+  pre_trade_check_id?: string | null;
+  review_task_id?: number | null;
+}
+
+export interface PortfolioSummary {
+  holding_count: number;
+  total_market_value: number;
+  total_cost_value: number;
+  total_unrealized_pnl: number;
+  total_unrealized_pnl_rate: number;
+  max_position_weight: number;
+  max_position_stock_id?: string | null;
+  max_position_stock_name?: string | null;
+  concentration_alert?: string | null;
+  risk_tips: string[];
+  data_updated_at?: string | null;
+}
+
+export interface PortfolioOverview {
+  summary: PortfolioSummary;
+  holdings: HoldingItem[];
+}
+
+export interface ShareSnapshot {
+  share_id: string;
+  source_type?: string;
+  source_id?: string;
+  title: string;
+  summary: string;
+  support_evidence: string[];
+  counter_evidence: string[];
+  risks: string[];
+  invalidation_conditions: string[];
+  confidence_level: 'low' | 'medium' | 'high' | string;
+  data_timestamp?: string | null;
+  disclaimer: string;
+  privacy_level?: string;
+  created_at: string;
+  expires_at?: string | null;
+  revoked_at?: string | null;
+}
+
+export interface CreateSharePayload {
+  source_type: 'analysis';
+  source_id: string;
+  privacy_level?: 'public' | 'unlisted';
+  expires_in_days?: number;
 }
 
 /**
@@ -378,7 +489,7 @@ export interface UserAction {
 
 // Notifications
 
-export type NotificationType = 'review_reminder' | 'watchlist_alert' | 'analysis_invalidation';
+export type NotificationType = 'review_reminder' | 'watchlist_alert' | 'analysis_invalidation' | 'portfolio_risk';
 export type NotificationUrgency = 'overdue' | 'due_soon' | 'normal' | 'high';
 
 export interface NotificationItem {
