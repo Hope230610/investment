@@ -16,6 +16,8 @@ from .watchlist_v2 import Watchlist, AddedFromScenarioEnum
 from .user_action import UserAction, UserActionTypeEnum
 from .emotion_history import EmotionHistory
 from .judgment_history import JudgmentHistory
+from .portfolio import Holding, Transaction, TransactionSideEnum
+from .p3 import PlanCodeEnum, SharePrivacyLevelEnum, ShareSnapshot, UsageCounter, UserEntitlement
 
 __all__ = [
     "TimestampMixin",
@@ -43,4 +45,12 @@ __all__ = [
     "UserActionTypeEnum",
     "EmotionHistory",
     "JudgmentHistory",
+    "Holding",
+    "Transaction",
+    "TransactionSideEnum",
+    "PlanCodeEnum",
+    "SharePrivacyLevelEnum",
+    "ShareSnapshot",
+    "UsageCounter",
+    "UserEntitlement",
 ]

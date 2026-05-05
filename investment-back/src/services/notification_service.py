@@ -9,6 +9,7 @@
 - analysis_invalidation：分析结论可能已失效（价格大幅偏离、风险关键词出现）
 """
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from typing import Optional
 from uuid import uuid4
 
@@ -20,6 +21,7 @@ from src.models.analysis_task import AnalysisTask
 from src.models.analysis_result import AnalysisResult
 from src.models.stock import Stock as StockModel
 from src.models.watchlist_v2 import Watchlist
+from src.models.portfolio import Holding
 from src.schemas.notification import (
     NotificationItem,
     NotificationListResponse,
@@ -43,6 +45,12 @@ RISK_KEYWORDS = (
 )
 
 
+def _as_float(value) -> float:
+    if isinstance(value, Decimal):
+        return float(value)
+    return float(value or 0)
+
+
 class NotificationService:
     def __init__(self, db: Session):
         self.db = db
@@ -64,6 +72,7 @@ class NotificationService:
 
         # 3. 分析失效提醒
         notifications.extend(self._collect_analysis_invalidations(user_id))
+        notifications.extend(self._collect_portfolio_risks(user_id))
 
         # 按紧迫程度 + 时间排序
         notifications = self._sort_notifications(notifications)
@@ -81,6 +90,18 @@ class NotificationService:
             unread_count=overdue_count,
             summary=summary,
         )
+
+    def get_summary(self, user_id: int) -> NotificationSummary:
+        """Build a lightweight badge summary without market-data aggregation."""
+        notifications: list[NotificationItem] = []
+        notifications.extend(self._collect_review_reminders(user_id))
+        notifications.extend(self._collect_portfolio_risks(user_id))
+
+        summary = self._build_summary(notifications)
+        invalidation_count = self._count_expired_analysis_candidates(user_id)
+        summary.total += invalidation_count
+        summary.invalidation_count = invalidation_count
+        return summary
 
     def _collect_review_reminders(self, user_id: int) -> list[NotificationItem]:
         """收集待复盘提醒"""
@@ -322,6 +343,25 @@ class NotificationService:
 
         return notifications
 
+    def _count_expired_analysis_candidates(self, user_id: int) -> int:
+        """Count locally expired analyses for lightweight summary badges."""
+        from src.models.analysis_task import AnalysisStatusEnum
+
+        return (
+            self.db.query(AnalysisTask)
+            .join(AnalysisResult, AnalysisTask.id == AnalysisResult.analysis_task_id)
+            .filter(
+                AnalysisTask.user_id == user_id,
+                AnalysisTask.expired_at < datetime.now(),
+                AnalysisTask.status.in_([
+                    AnalysisStatusEnum.READY,
+                    AnalysisStatusEnum.PARTIAL_READY,
+                    AnalysisStatusEnum.EXPIRED,
+                ]),
+            )
+            .count()
+        )
+
     def _sort_notifications(self, notifications: list[NotificationItem]) -> list[NotificationItem]:
         """按紧迫程度（降序） + 创建时间（降序）排序"""
         urgency_order = {
@@ -334,6 +374,66 @@ class NotificationService:
             notifications,
             key=lambda n: (urgency_order.get(n.urgency, 99), -n.created_at.timestamp()),
         )
+
+    def _collect_portfolio_risks(self, user_id: int) -> list[NotificationItem]:
+        holdings = self.db.query(Holding).filter(Holding.user_id == user_id).all()
+        if not holdings:
+            return []
+
+        total_value = sum(_as_float(h.quantity) * _as_float(h.current_price) for h in holdings)
+        if total_value <= 0:
+            return []
+
+        notifications: list[NotificationItem] = []
+        now = datetime.now()
+        for holding in holdings:
+            market_value = _as_float(holding.quantity) * _as_float(holding.current_price)
+            cost_value = _as_float(holding.quantity) * _as_float(holding.cost_price)
+            weight = market_value / total_value
+            pnl_rate = ((market_value - cost_value) / cost_value) if cost_value else 0
+
+            if weight >= 0.6:
+                notifications.append(NotificationItem(
+                    id=str(uuid4()),
+                    type=NotificationType.PORTFOLIO_RISK,
+                    title=f"持仓集中度偏高：{holding.stock_name}",
+                    description=f"{holding.stock_name} 当前约占组合 {weight * 100:.1f}%，需要优先复核仓位边界和原始买入理由。",
+                    urgency=NotificationUrgency.HIGH,
+                    stock_id=holding.stock_id,
+                    stock_name=holding.stock_name,
+                    action_url="/portfolio",
+                    created_at=holding.position_updated_at or now,
+                    metadata={"weight": weight},
+                ))
+            elif weight >= 0.4:
+                notifications.append(NotificationItem(
+                    id=str(uuid4()),
+                    type=NotificationType.PORTFOLIO_RISK,
+                    title=f"单票占比需要关注：{holding.stock_name}",
+                    description=f"{holding.stock_name} 当前约占组合 {weight * 100:.1f}%，若继续加仓，需要补充新的事实证据。",
+                    urgency=NotificationUrgency.DUE_SOON,
+                    stock_id=holding.stock_id,
+                    stock_name=holding.stock_name,
+                    action_url="/portfolio",
+                    created_at=holding.position_updated_at or now,
+                    metadata={"weight": weight},
+                ))
+
+            if pnl_rate <= -0.15:
+                notifications.append(NotificationItem(
+                    id=str(uuid4()),
+                    type=NotificationType.PORTFOLIO_RISK,
+                    title=f"浮亏状态复盘提醒：{holding.stock_name}",
+                    description=f"{holding.stock_name} 当前浮亏约 {pnl_rate * 100:.1f}%，建议区分事实变化、原始买入理由和亏损情绪。",
+                    urgency=NotificationUrgency.DUE_SOON,
+                    stock_id=holding.stock_id,
+                    stock_name=holding.stock_name,
+                    action_url=f"/analysis/post-trade?stock_id={holding.stock_id}&stock_name={holding.stock_name}",
+                    created_at=holding.position_updated_at or now,
+                    metadata={"unrealized_pnl_rate": pnl_rate},
+                ))
+
+        return notifications
 
     def _build_summary(self, notifications: list[NotificationItem]) -> NotificationSummary:
         overdue = sum(

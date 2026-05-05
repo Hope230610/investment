@@ -75,6 +75,7 @@ def ensure_review_task_for_analysis(db_engine, analysis_task_id: str = REAL_ANAL
     from sqlalchemy import text
 
     with db_engine.begin() as conn:
+        ensure_analysis_task_fixture(conn, analysis_task_id)
         analysis = conn.execute(
             text(
                 "SELECT at.user_id, at.stock_id, at.scenario, "
@@ -145,6 +146,43 @@ def ensure_review_task_for_analysis(db_engine, analysis_task_id: str = REAL_ANAL
     return int(review_task_id)
 
 
+def ensure_analysis_task_fixture(conn, analysis_task_id: str = REAL_ANALYSIS_UUID) -> None:
+    """Ensure the fixed analysis_task fixture exists in the dedicated test DB."""
+    from sqlalchemy import text
+
+    conn.execute(
+        text(
+            "INSERT INTO stocks "
+            "(stock_id, stock_name, market, industry, created_at, updated_at) "
+            "VALUES "
+            "('SH600519', '贵州茅台', 'SH', '白酒', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) "
+            "ON CONFLICT (stock_id) DO UPDATE SET "
+            "stock_name = EXCLUDED.stock_name, "
+            "market = EXCLUDED.market, "
+            "industry = EXCLUDED.industry, "
+            "updated_at = CURRENT_TIMESTAMP"
+        )
+    )
+    exists = conn.execute(
+        text("SELECT 1 FROM analysis_tasks WHERE id = :analysis_task_id"),
+        {"analysis_task_id": analysis_task_id},
+    ).scalar()
+    if exists:
+        return
+
+    conn.execute(
+        text(
+            "INSERT INTO analysis_tasks "
+            "(id, user_id, stock_id, scenario, status, scenario_payload, "
+            "created_at, updated_at, expired_at) "
+            "VALUES "
+            "(:analysis_task_id, 1, 'SH600519', 'post_trade_review', 'ready', '{}'::json, "
+            "CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL '7 days')"
+        ),
+        {"analysis_task_id": analysis_task_id},
+    )
+
+
 # ---------------------------------------------------------------------------
 # GET /api/v1/user/profile/learning-history
 # ---------------------------------------------------------------------------
@@ -198,7 +236,9 @@ VALID_FEEDBACK_PAYLOAD = {
 
 
 @pytest.mark.asyncio
-async def test_post_learning_feedback_accepts_valid_payload(client, auth_headers):
+async def test_post_learning_feedback_accepts_valid_payload(client, auth_headers, db_engine):
+    with db_engine.begin() as conn:
+        ensure_analysis_task_fixture(conn)
     resp = await client.post(
         "/api/v1/user/profile/learning-feedback",
         headers=auth_headers,

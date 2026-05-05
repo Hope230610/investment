@@ -26,7 +26,10 @@ from src.schemas.analysis import (
 from src.schemas.stock import StockDetail
 from src.schemas.watchlist import RecordReasonRequest, RecordReasonResponse
 from src.services.analysis_service import _is_valid_uuid, AnalysisService
+from src.services.entitlement_service import EntitlementLimitExceeded, EntitlementService
+from src.services.growth_service import GrowthService
 from src.services.market_data_service import MarketDataService
+from src.services.portfolio_service import PortfolioService
 from src.workers.dispatcher import enqueue_analysis_job
 
 
@@ -123,6 +126,28 @@ async def create_analysis(
 
     _upsert_stock_record(db, stock_detail)
 
+    payload = dict(analysis_data.scenario_payload or {})
+    payload.pop("holding_context", None)
+    payload.pop("growth_caution_context", None)
+
+    holding_context = PortfolioService(db).get_holding_context(current_user.id, analysis_data.stock_id)
+    if holding_context:
+        payload["holding_context"] = holding_context
+    if hasattr(db, "query"):
+        payload["growth_caution_context"] = GrowthService(db).build_caution_context(current_user.id).model_dump(mode="json")
+    analysis_data = analysis_data.model_copy(update={"scenario_payload": payload})
+
+    if hasattr(db, "query"):
+        try:
+            EntitlementService(db).assert_within_limit(current_user.id, "daily_analysis", increment=True)
+        except EntitlementLimitExceeded as exc:
+            return api_error(
+                HTTP_409_CONFLICT,
+                "ENTITLEMENT_LIMIT_EXCEEDED",
+                f"{exc.usage_key} 已达到当前方案限制",
+                request,
+            )
+
     analysis_service = AnalysisService(db)
     result_obj = analysis_service.create_analysis(current_user.id, analysis_data)
 
@@ -189,6 +214,7 @@ def _get_analysis_from_new_tables(
 
     review_tasks = db.query(ReviewTaskModel).filter(
         ReviewTaskModel.analysis_task_id == task_uuid,
+        ReviewTaskModel.user_id == user_id,
     ).all()
 
     # 实时行情数据（用于 UI 展示层）
@@ -230,6 +256,9 @@ def _get_analysis_from_new_tables(
                         degrade_flags.append(flag)
             analysis_template_version = metadata.get("analysis_template_version")
             analysis_policy_version = metadata.get("analysis_policy_version")
+            prompt_template_version = metadata.get("prompt_template_version")
+            if prompt_template_version and not analysis_template_version:
+                analysis_template_version = prompt_template_version
 
     # 决策卡
     if result:
@@ -301,6 +330,7 @@ def _get_analysis_from_new_tables(
         fit_summary=result.fit_summary if result else None,
         market_context=result.market_context if result else None,
         explanation_layer=result.explanation_layer if result else None,
+        detail_panels=result.detail_panels if result else None,
         review_task=review_task_data,
         stock_snapshot=stock_snapshot,
         company_profile=company_profile,
@@ -313,6 +343,7 @@ def _get_analysis_from_new_tables(
         stock_market=stock_market,
         stock_industry=stock_industry,
         scenario_payload=task.scenario_payload,
+        holding_context=(task.scenario_payload or {}).get("holding_context") if task.scenario_payload else None,
     )
 
 

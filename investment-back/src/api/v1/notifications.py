@@ -82,10 +82,10 @@ async def get_notification_summary(
     try:
         service = NotificationService(db)
         try:
-            result = service.get_notifications(current_user.id)
+            summary = service.get_summary(current_user.id)
         finally:
             service.close()
-        return result.summary
+        return summary
 
     except Exception as exc:
         logger.error("get_notification_summary_failed", user_id=current_user.id, error=str(exc))

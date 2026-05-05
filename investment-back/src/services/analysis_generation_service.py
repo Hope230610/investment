@@ -46,13 +46,87 @@ class AnalysisGenerationService:
         metrics = self._build_metrics(detail.quote_snapshot, detail.recent_history, detail.recent_events)
 
         if not detail.quote_snapshot and not detail.recent_history:
-            return self._build_insufficient_data_result(detail, scenario, intervention)
+            result = self._build_insufficient_data_result(detail, scenario, intervention)
+            self._apply_holding_context(result, scenario_payload)
+            self._apply_growth_caution_context(result, scenario_payload)
+            return result
 
         if scenario == InteractionScenario.PRE_TRADE_CHECK:
-            return self._build_pre_trade_result(detail, metrics, scenario_payload, intervention)
-        if scenario == InteractionScenario.POST_TRADE_REVIEW:
-            return self._build_post_trade_result(detail, metrics, scenario_payload, intervention)
-        return self._build_single_stock_result(detail, metrics, intervention)
+            result = self._build_pre_trade_result(detail, metrics, scenario_payload, intervention)
+        elif scenario == InteractionScenario.POST_TRADE_REVIEW:
+            result = self._build_post_trade_result(detail, metrics, scenario_payload, intervention)
+        else:
+            result = self._build_single_stock_result(detail, metrics, intervention)
+        self._apply_holding_context(result, scenario_payload)
+        self._apply_growth_caution_context(result, scenario_payload)
+        return result
+
+    def _apply_growth_caution_context(self, result: AnalysisResult, scenario_payload: dict[str, Any]) -> None:
+        growth = scenario_payload.get("growth_caution_context")
+        if not isinstance(growth, dict):
+            return
+
+        rules = [str(item) for item in growth.get("caution_rules") or [] if str(item).strip()]
+        patterns = [str(item) for item in growth.get("behavior_patterns") or [] if str(item).strip()]
+        mistakes = [str(item) for item in growth.get("repeated_mistakes") or [] if str(item).strip()]
+        questions = [str(item) for item in growth.get("suggested_review_questions") or [] if str(item).strip()]
+        if not any([rules, patterns, mistakes, questions]):
+            return
+
+        if mistakes:
+            result.decision_card.counter_evidence.append(f"[复盘成长] 历史重复偏差提示：{mistakes[0]}")
+        if patterns:
+            result.decision_card.counter_evidence.append(f"[复盘成长] 行为模式提示：{patterns[0]}")
+        for rule in rules[:2]:
+            result.decision_card.next_step_actions.append(f"[复盘成长] {rule}")
+        if questions:
+            result.decision_card.invalidation_conditions.append(
+                f"若无法回答复盘问题“{questions[0]}”，本次判断需要降低置信度。"
+            )
+        if growth.get("confidence_level") in {"medium", "high"}:
+            result.decision_card.primary_risks = (
+                f"{result.decision_card.primary_risks} 复盘成长引擎已识别到可复用的历史偏差信号，本次结论需要先通过额外自检。"
+            )
+
+    def _apply_holding_context(self, result: AnalysisResult, scenario_payload: dict[str, Any]) -> None:
+        holding = scenario_payload.get("holding_context")
+        if not isinstance(holding, dict):
+            return
+
+        stock_name = holding.get("stock_name") or holding.get("stock_id") or "该标的"
+        weight = float(holding.get("weight") or 0)
+        pnl = float(holding.get("unrealized_pnl") or 0)
+        pnl_rate = float(holding.get("unrealized_pnl_rate") or 0)
+        position_line = (
+            f"当前已记录持仓：{stock_name} 占组合约 {weight * 100:.1f}%，"
+            f"浮动盈亏约 {pnl:.2f}（{pnl_rate * 100:.1f}%）。"
+        )
+        result.decision_card.key_reason_summary.append(
+            ReasonPoint(text=position_line, tag=OutputMarkType.DATA_FACT)
+        )
+        result.decision_card.supporting_evidence.append(f"[持仓] {position_line}")
+
+        if weight >= 0.4:
+            result.decision_card.primary_risks = (
+                f"{result.decision_card.primary_risks} 当前仓位偏高，继续扩大仓位前需要先确认集中度风险和资金边界。"
+            )
+            result.decision_card.next_step_actions.append(
+                "先复核该标的在组合中的占比和原始买入理由，再决定是否需要重新分析或复盘。"
+            )
+            result.decision_card.counter_evidence.append(
+                "如果继续加仓，需要补充新的事实证据，不能只因为已有持仓盈利或亏损而放大动作。"
+            )
+        elif pnl < 0:
+            result.decision_card.next_step_actions.append(
+                "把当前浮亏和原始买入理由分开复盘，避免让亏损情绪替代事实判断。"
+            )
+            result.decision_card.counter_evidence.append(
+                "若原始买入理由已经失效，应重新评估，而不是只围绕回本目标做判断。"
+            )
+        else:
+            result.decision_card.next_step_actions.append(
+                "结合现有持仓记录更新复盘时间和失效条件，避免只看单次分析结论。"
+            )
 
     def _build_single_stock_result(
         self,

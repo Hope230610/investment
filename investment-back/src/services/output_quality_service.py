@@ -9,15 +9,37 @@ from src.schemas.analysis import DecisionCard
 BLOCKED_TRADING_PHRASES = (
     "必须买",
     "必须买入",
+    "建议买入",
+    "建议卖出",
+    "可以买入",
+    "可以卖出",
+    "可以重仓",
     "赶紧买",
     "赶紧卖",
     "赶紧卖出",
     "必须卖",
     "必须卖出",
     "明天一定涨",
+    "明天会涨",
     "一定会涨",
     "稳赚",
+    "目标收益",
+    "跟着买",
+    "抄底机会",
+    "强烈推荐",
+    "自动调仓",
+    "自动交易",
     "无风险",
+    "buy now",
+    "sell now",
+    "strong buy",
+    "strong sell",
+    "guaranteed return",
+    "guaranteed profit",
+    "risk-free",
+    "target return",
+    "follow me to buy",
+    "auto trade",
 )
 
 SAFE_DEGRADED_ACTION_WORDS = (
@@ -52,7 +74,7 @@ class OutputQualityReport:
 
 
 class OutputQualityService:
-    """Deterministic P0 output quality checks for investment decision cards."""
+    """Deterministic output quality checks for investment decision cards."""
 
     def evaluate_decision_card(
         self,
@@ -68,27 +90,27 @@ class OutputQualityService:
             if phrase in all_text:
                 issues.append(OutputQualityIssue(
                     code="direct_trading_instruction",
-                    message=f"输出包含直接或确定性交易表达：{phrase}",
+                    message=f"Output contains a direct or deterministic trading expression: {phrase}",
                 ))
 
         if not decision_card.supporting_evidence:
-            issues.append(OutputQualityIssue("missing_supporting_evidence", "缺少支撑证据"))
+            issues.append(OutputQualityIssue("missing_supporting_evidence", "Missing supporting evidence"))
         if not decision_card.counter_evidence:
-            issues.append(OutputQualityIssue("missing_counter_evidence", "缺少反方证据"))
+            issues.append(OutputQualityIssue("missing_counter_evidence", "Missing counter evidence"))
         if not decision_card.invalidation_conditions:
-            issues.append(OutputQualityIssue("missing_invalidation_conditions", "缺少失效条件"))
+            issues.append(OutputQualityIssue("missing_invalidation_conditions", "Missing invalidation conditions"))
         if decision_card.confidence_level not in {"low", "medium", "high"}:
-            issues.append(OutputQualityIssue("invalid_confidence_level", "置信度枚举非法"))
+            issues.append(OutputQualityIssue("invalid_confidence_level", "Invalid confidence level"))
         if not decision_card.primary_risks.strip():
-            issues.append(OutputQualityIssue("missing_primary_risks", "缺少主要风险表达"))
+            issues.append(OutputQualityIssue("missing_primary_risks", "Missing primary risks"))
 
         if not flags and decision_card.data_as_of is None:
-            issues.append(OutputQualityIssue("missing_data_as_of", "完整结果缺少数据时间戳"))
+            issues.append(OutputQualityIssue("missing_data_as_of", "Complete result is missing data timestamp"))
 
         if flags & DEGRADE_FLAGS_REQUIRE_LOW_CONFIDENCE and decision_card.confidence_level == "high":
             issues.append(OutputQualityIssue(
                 "high_confidence_with_degraded_data",
-                "数据或证据降级时不得输出高置信结论",
+                "High confidence is not allowed when data or evidence is degraded",
             ))
 
         if flags:
@@ -96,7 +118,7 @@ class OutputQualityService:
             if not any(word in action_text for word in SAFE_DEGRADED_ACTION_WORDS):
                 issues.append(OutputQualityIssue(
                     "unsafe_degraded_next_actions",
-                    "降级结果的下一步动作必须收敛到观察、等待、补充信息、重试、重新评估或复盘",
+                    "Degraded next actions must stay within observation, waiting, evidence collection, retry, reassessment, or review",
                 ))
 
         return OutputQualityReport(passed=not issues, issues=issues)

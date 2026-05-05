@@ -45,6 +45,8 @@ def run_analysis_job(task_uuid_str: str) -> None:
         from src.services.learning_service import UserLearningService
         from src.services.market_data_service import MarketDataService
         from src.services.output_quality_service import OutputQualityService
+        from src.services.portfolio_service import PortfolioService
+        from src.services.growth_service import GrowthService
         from src.services.user_service import UserService
 
         market_data_service = MarketDataService()
@@ -67,7 +69,15 @@ def run_analysis_job(task_uuid_str: str) -> None:
         stock_detail = market_data_service.get_stock_detail(task.stock_id)
         stock = _upsert_stock_record(db, stock_detail)
         user_profile = user_service.get_or_create_profile(task.user_id)
-        scenario_payload: dict[str, Any] = task.scenario_payload or {}
+        scenario_payload: dict[str, Any] = dict(task.scenario_payload or {})
+        scenario_payload.pop("holding_context", None)
+        scenario_payload.pop("growth_caution_context", None)
+        holding_context = PortfolioService(db).get_holding_context(task.user_id, task.stock_id)
+        if holding_context:
+            scenario_payload["holding_context"] = holding_context
+        scenario_payload["growth_caution_context"] = GrowthService(db).build_caution_context(task.user_id).model_dump(mode="json")
+        if scenario_payload != (task.scenario_payload or {}):
+            task.scenario_payload = scenario_payload
 
         # ── 3. Behavior intervention ───────────────────────────────────────────
         intervention = None
@@ -159,6 +169,16 @@ def run_analysis_job(task_uuid_str: str) -> None:
                         "analysis_template_version": result.analysis_template_version,
                         "analysis_policy_version": result.analysis_policy_version,
                         "degrade_flags": list(result.degrade_flags),
+                        "prompt_template_id": "analysis_decision_card",
+                        "prompt_template_version": result.analysis_template_version,
+                        "model_provider": "rules_engine",
+                        "model_name": "deterministic-v1",
+                        "generated_at": datetime.utcnow().isoformat(),
+                        "output_schema_version": "decision-card-v2",
+                        "data_snapshot_timestamp": (
+                            decision_card.data_as_of.isoformat()
+                            if decision_card.data_as_of else None
+                        ),
                     }
                 },
                 output_tags=["model_inference"],

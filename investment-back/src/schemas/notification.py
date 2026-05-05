@@ -9,6 +9,7 @@ class NotificationType(str, Enum):
     REVIEW_REMINDER = "review_reminder"
     WATCHLIST_ALERT = "watchlist_alert"
     ANALYSIS_INVALIDATION = "analysis_invalidation"
+    PORTFOLIO_RISK = "portfolio_risk"
 
 
 class NotificationUrgency(str, Enum):

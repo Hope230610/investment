@@ -44,6 +44,14 @@ def test_direct_trading_instruction_fails():
     assert {issue.code for issue in report.issues} >= {"direct_trading_instruction"}
 
 
+def test_english_direct_trading_instruction_fails():
+    report = OutputQualityService().evaluate_decision_card(
+        make_card(headline_judgement="strong buy with guaranteed return")
+    )
+    assert not report.passed
+    assert {issue.code for issue in report.issues} >= {"direct_trading_instruction"}
+
+
 def test_missing_evidence_fields_fail():
     report = OutputQualityService().evaluate_decision_card(
         make_card(supporting_evidence=[], counter_evidence=[], invalidation_conditions=[])

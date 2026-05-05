@@ -139,6 +139,7 @@ class ReviewTask(TimestampMixin):
 class AnalysisBase(BaseModel):
     scenario: InteractionScenario
     scenario_payload: Optional[Dict[str, Any]] = None
+    holding_context: Optional[Dict[str, Any]] = None
 
 
 class AnalysisCreate(AnalysisBase):
@@ -259,6 +260,7 @@ class GetAnalysisResponseV2(BaseModel):
     stock_industry: Optional[str] = None
     # 场景透传（intent / trigger_reason / emotion_level，用于标签推断）
     scenario_payload: Optional[Dict[str, Any]] = None
+    holding_context: Optional[Dict[str, Any]] = None
 
     class Config:
         from_attributes = True

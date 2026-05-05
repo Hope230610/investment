@@ -66,7 +66,20 @@ class AnalysisService:
             self.db.add(stock)
             self.db.commit()
 
+        analysis_data = self._with_server_holding_context(user_id, analysis_data)
         return self._create_analysis_task(user_id, analysis_data)
+
+    def _with_server_holding_context(self, user_id: int, analysis_data: AnalysisCreate) -> AnalysisCreate:
+        """Drop client-supplied holding context and rebuild it from persisted holdings."""
+        from src.services.portfolio_service import PortfolioService
+
+        payload = dict(analysis_data.scenario_payload or {})
+        payload.pop("holding_context", None)
+
+        holding_context = PortfolioService(self.db).get_holding_context(user_id, analysis_data.stock_id)
+        if holding_context:
+            payload["holding_context"] = holding_context
+        return analysis_data.model_copy(update={"scenario_payload": payload})
 
     def _create_analysis_task(self, user_id: int, analysis_data: AnalysisCreate) -> Any:
         """新路径：写入 analysis_tasks 表"""
