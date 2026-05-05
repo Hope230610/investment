@@ -156,7 +156,15 @@ def _format_validation_error(exc: RequestValidationError) -> str:
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
-    return {"status": "healthy", "version": settings.APP_VERSION}
+    return {
+        "status": "healthy",
+        "version": settings.APP_VERSION,
+        "dependencies": {
+            "database": "not_checked",
+            "redis": "required" if not settings.RQ_ASYNC else "not_required",
+            "worker_mode": "rq" if not settings.RQ_ASYNC else "in_process_background_tasks",
+        },
+    }
 
 
 @app.get("/ready")
@@ -167,20 +175,57 @@ async def readiness_check():
     Returns 200 + {status: ready} when healthy.
     Returns 503 + {status: not ready} when unhealthy.
     """
+    checks = {
+        "database": "unknown",
+        "redis": "not_required" if settings.RQ_ASYNC else "unknown",
+        "worker_mode": "rq" if not settings.RQ_ASYNC else "in_process_background_tasks",
+    }
+
     try:
         from sqlalchemy import text
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
+        checks["database"] = "healthy"
     except Exception as exc:
+        checks["database"] = "unhealthy"
         return JSONResponse(
             status_code=503,
             content={
                 "status": "not ready",
                 "reason": "database unreachable",
                 "detail": str(exc),
+                "checks": checks,
             },
         )
-    return {"status": "ready", "version": settings.APP_VERSION}
+
+    if not settings.RQ_ASYNC:
+        redis_error = _check_redis_connection()
+        if redis_error:
+            checks["redis"] = "unhealthy"
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "status": "degraded",
+                    "reason": "redis unreachable",
+                    "detail": redis_error,
+                    "checks": checks,
+                },
+            )
+        checks["redis"] = "healthy"
+
+    return {"status": "ready", "version": settings.APP_VERSION, "checks": checks}
+
+
+def _check_redis_connection() -> str | None:
+    """Return an error string when production RQ Redis is unreachable."""
+    try:
+        from redis import Redis
+
+        redis_conn = Redis.from_url(settings.REDIS_URL, socket_connect_timeout=2, socket_timeout=2)
+        redis_conn.ping()
+    except Exception as exc:
+        return str(exc)
+    return None
 
 
 @app.get("/")
