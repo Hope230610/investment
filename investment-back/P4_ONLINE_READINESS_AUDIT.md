@@ -4,11 +4,15 @@ Date: 2026-05-05
 
 ## Final Gate Conclusion
 
-Current state: **Blocked for Production Online Ready**.
+Current state: **C. Blocked**.
 
-The main RealMarket blocker from the previous P4 audit was fixed in this round: RealMarket Full E2E now passes from a prepared E2E database. However, production launch remains blocked because the real Redis + separate RQ worker topology could not be accepted on this machine and formal human compliance sign-off is still pending.
+Production launch allowed: **No**.
 
-Recommended next state: **continue P4 hardening; do not public-launch production**. Once Redis/RQ topology and compliance sign-off are complete, the project may be reconsidered for **Staging Ready / Controlled Beta Ready**.
+Controlled beta allowed: **No**.
+
+The RealMarket and Redis/RQ blockers from the earlier P4 audit have been closed: RealMarket Full E2E passes, MockMarket Full E2E passes, and the real Redis + separate RQ worker topology acceptance passes with `RQ_ASYNC=false`. The only remaining online-readiness blocker is that formal named human compliance/legal sign-off is still pending.
+
+Recommended next state: **do not public-launch production and do not start controlled beta**. The next gate is not additional business functionality; it is recording a real named human compliance/legal reviewer with role, scope, date, conclusion, notes, remaining risk, and explicit production/beta allowance.
 
 ## Phase 0 Worktree Protection
 
@@ -100,7 +104,11 @@ Result: **Must Fix remains open**.
 
 ## Compliance
 
-Current state: **Conditional Pass for controlled staging/beta evidence; Blocked for production without human sign-off**.
+Current state: **Blocked**.
+
+Production launch allowed: **No**.
+
+Controlled beta allowed: **No**.
 
 Added:
 
@@ -114,9 +122,10 @@ Grep results:
 
 Remaining:
 
-- Human review of share-card title/summary/disclaimer wording.
-- Human review of sanitizer behavior on real model outputs.
-- Formal reviewer/date/result recorded in the sign-off pack.
+- Formal named human compliance/legal sign-off remains pending.
+- Human review of share-card title/summary/disclaimer wording remains required.
+- Human review of sanitizer behavior on real model outputs remains required.
+- Formal reviewer name, role, date, scope, conclusion, notes, remaining risk, and explicit production/beta allowance must be recorded in the sign-off pack.
 
 ## Security, Privacy, And User Isolation
 
@@ -197,8 +206,8 @@ Blocked / not completed:
 
 | Level | Item | Current Evidence | Recommendation |
 | --- | --- | --- | --- |
-| Must Fix | Redis/RQ topology not accepted | Redis package installed, but no Redis server / Docker available; full worker chain not run | Run real Redis + API + separate worker + frontend with `RQ_ASYNC=false` |
-| Must Fix | Compliance human sign-off pending | Evidence pack created, grep clean for disallowed user-visible copy, but no reviewer signature | Complete manual sign-off before public production |
+| Closed | Redis/RQ topology accepted | Redis reachable; `/health` healthy; `/ready` ready with Redis healthy and `worker_mode=rq`; quick `POST /analysis`; RQ job found; independent worker moved task to `ready` | Keep as required release evidence |
+| Must Fix | Compliance human sign-off pending | Evidence pack created, grep clean for disallowed user-visible copy, but no named human compliance/legal reviewer signature | Complete manual sign-off before public production or controlled beta |
 | Should Fix | Vite chunk warning | main JS about 543.83 kB | Accept for beta or split chunks before production |
 | Should Fix | Deprecation warnings | FastAPI `on_event`, Pydantic class config, `datetime.utcnow` | Track as hardening |
 | Should Fix | More cross-user API isolation tests | Existing focused tests pass | Broaden before public scale |
@@ -207,7 +216,7 @@ Blocked / not completed:
 
 Do not proceed to public production launch.
 
-The project is materially stronger than the initial P4 Blocked state because RealMarket Full E2E now passes and data-source failures degrade safely. But the conservative final state remains **Blocked** until Redis/RQ topology and human compliance sign-off are complete.
+The project is materially stronger than the initial P4 Blocked state because RealMarket Full E2E passes, Redis/RQ topology passes, and data-source failures degrade safely. But the conservative final state remains **Blocked** until named human compliance/legal sign-off is complete.
 
 ## P4 Final Blocker Closure Attempt - 2026-05-05
 
@@ -247,9 +256,10 @@ Redis/RQ topology result:
 
 Compliance sign-off result:
 
-- Engineering review: Conditional Pass for controlled staging / beta evidence.
+- Engineering review evidence is recorded only and is not formal named human compliance/legal sign-off.
 - Formal named human compliance/legal sign-off: Blocked / Pending.
 - Public production compliance gate remains Blocked.
+- Controlled beta gate remains Blocked.
 
 Staging checklist result:
 
@@ -282,3 +292,127 @@ Later:
 
 - Add live provider AI eval samples before enabling any live LLM provider for public production.
 - Add launch-day dashboards for Redis/RQ queue depth, failed jobs, degraded market data, and sanitizer hits.
+
+## P4 Redis-backed Staging Acceptance Attempt - 2026-05-05
+
+Final state after this attempt: **Blocked**.
+
+Scope of this pass:
+
+- Re-read the P4 readiness audit, checklist, deployment runbook, compliance sign-off pack, and RQ topology acceptance script.
+- Reconfirmed worktree protection before staging acceptance: `git status --short` clean, `git diff -- need.md` clean, and `git diff --check` clean.
+- Checked local Redis reachability, process topology, and staging environment variables before running acceptance.
+- Executed `investment-back/scripts/run_rq_topology_acceptance.ps1` against the default local topology.
+
+Environment findings:
+
+- `Test-NetConnection -ComputerName localhost -Port 6379` returned `TcpTestSucceeded=False`.
+- No `REDIS_URL`, `RQ_ASYNC`, `ENVIRONMENT`, or `DATABASE_URL` variables were set in the current shell before the script.
+- Running processes showed PostgreSQL, but no Redis server, FastAPI backend, separate `python -m src.workers` worker, or frontend dev server.
+- PostgreSQL processes were present locally, but this was not a complete Redis-backed staging topology.
+
+RQ topology acceptance result:
+
+- **Failed / not accepted**.
+- Script environment guard set `RQ_ASYNC=false` and `REDIS_URL=redis://localhost:6379/0`.
+- The script failed at Redis ping with `redis.exceptions.ConnectionError: Error 10061 connecting to localhost:6379`.
+- Because Redis was unreachable, the acceptance did not proceed to `/health`, `/ready`, frontend reachability, auth/login, quick `POST /analysis`, RQ job presence, worker consumption, or terminal task status.
+- No BackgroundTasks fallback was used and the Redis/RQ blocker remains open.
+
+P4 checklist status:
+
+- The full P4 checklist was not rerun in Redis-backed staging topology because phase-one Redis topology preflight failed.
+- Previous local non-Redis evidence remains useful history, but cannot promote staging readiness.
+- `need.md` remained unmodified during this attempt.
+
+Compliance sign-off status:
+
+- No named human legal/compliance reviewer was provided in this environment.
+- Engineering conditional review remains the only recorded review.
+- Formal compliance/legal sign-off remains **Blocked / Pending**.
+
+Launch decision:
+
+- **Production Online Ready: No.**
+- **Staging Ready / Controlled Beta Ready: No.**
+- **Blocked: Yes.**
+
+Remaining Must Fix:
+
+1. Provide a reachable staging Redis URL or start a real Redis service.
+2. Start FastAPI with `ENVIRONMENT=staging`, `RQ_ASYNC=false`, and the same `REDIS_URL`.
+3. Start a separate worker with `python -m src.workers`.
+4. Start the frontend and run `scripts/run_rq_topology_acceptance.ps1` without skipping frontend checks.
+5. Rerun the full P4 checklist in that Redis-backed staging topology.
+6. Record a named human compliance/legal reviewer with role, date, reviewed scope, conclusion, notes, and remaining risk.
+
+## P4 Redis-backed Staging Acceptance Rerun - 2026-05-05
+
+Final state after this rerun: **Blocked**.
+
+What changed in this pass:
+
+- Redis became reachable at `redis://localhost:6379/0`; Python Redis ping returned `True` and `Test-NetConnection localhost:6379` returned `TcpTestSucceeded=True`.
+- Fixed `scripts/run_rq_topology_acceptance.ps1` scope/quoting issues so the script carries the auth token and analysis id across steps and preserves embedded Python strings.
+- Fixed Redis/RQ dispatch startup path:
+  - `src/workers/dispatcher.py` now imports `rq.Queue` in the queue creation path without a local-scope cache bug.
+  - `src/workers/worker_main.py` uses RQ `SimpleWorker` plus `TimerDeathPenalty` on Windows, avoiding unsupported `os.fork()` and `SIGALRM`.
+- Re-ran RQ topology acceptance with Redis, FastAPI, independent worker, and frontend.
+
+Redis/RQ topology result:
+
+- **Passed**.
+- Verified by `powershell -NoProfile -ExecutionPolicy Bypass -File .\investment-back\scripts\run_rq_topology_acceptance.ps1 -User p4redis_<timestamp> -Password testpassword123`.
+- Evidence:
+  - Redis ping: healthy.
+  - `/health`: healthy; Redis required; worker mode `rq`.
+  - `/ready`: ready; database healthy; Redis healthy; worker mode `rq`.
+  - Frontend: reachable with HTTP 200.
+  - Auth/register: succeeded for a fresh acceptance user.
+  - `POST /analysis`: quick enqueue in about 0.46s.
+  - RQ job: present in Redis with status `started`.
+  - Worker terminal result: task moved from `processing` to `ready`.
+  - Script final line: `RQ topology acceptance passed.`
+
+Full checklist rerun:
+
+- Backend `pytest -q`: **117 passed, 131 warnings**.
+- Targeted readiness / market degradation tests: **7 passed, 21 warnings**.
+- `alembic current`: **013 (head)**.
+- `alembic upgrade head`: **passed/no-op**.
+- Frontend `npm run lint`: **passed**.
+- Frontend `npm run test -- --run`: **52 passed**.
+- Frontend `npm run build`: **passed**, Vite chunk warning remains at about **543.83 kB**.
+- MockMarket Full E2E with Redis/RQ worker and E2E DB: **22 passed**, about **2.6 minutes**.
+- RealMarket Full E2E with Redis/RQ worker and E2E DB: **22 passed**, about **7.2 minutes**.
+- `git diff --check`: no whitespace errors; LF/CRLF warnings only.
+- `git diff -- need.md`: no diff.
+- Compliance grep: hits remain in tests, sanitizer/guard lists, behavior labels, transaction/self-check contexts, and explicit non-advice copy.
+
+Important E2E note:
+
+- The E2E script's Playwright backend command uses `python`; to keep `RQ_ASYNC=false` with declared `rq`/`redis` dependencies, the run prepended `F:\investment\investment-back\.venv\Scripts` to `PATH`.
+- Independent workers were started separately for MockMarket and RealMarket with the E2E database and matching market-data environment.
+- No BackgroundTasks fallback was used for the accepted RQ topology.
+
+Compliance sign-off result:
+
+- Engineering compliance review evidence is recorded only and is not formal named human compliance/legal sign-off.
+- Formal named human compliance/legal sign-off remains **Blocked / Pending**.
+- No human reviewer name, role, date, conclusion, notes, or remaining-risk acceptance was provided in this environment.
+
+Current launch decision:
+
+- **Production Online Ready: No.**
+- **Staging Ready / Controlled Beta Ready: No under the requested final gate, because formal human compliance/legal sign-off remains incomplete.**
+- **Blocked: Yes.**
+
+Remaining Must Fix:
+
+1. Record formal named human compliance/legal sign-off covering share cards, disclaimers, sanitizer, AI eval samples, and user-visible flows.
+
+Remaining Should Fix:
+
+- Address the Vite chunk warning before broader production traffic.
+- Track FastAPI/Pydantic/`datetime.utcnow` deprecation warnings.
+- Consider making the E2E backend command explicitly use the backend virtualenv so Redis/RQ dependencies are never missed when `RQ_ASYNC=false`.

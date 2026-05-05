@@ -37,11 +37,12 @@ def _get_queue() -> "Queue":
     in-process dev path (BackgroundTasks) does not require them.
     """
     global _redis_conn
+    from rq import Queue as QueueCls
+
     if _redis_conn is None:
         from redis import Redis as _RedisCls
-        from rq import Queue as _QueueCls
         _redis_conn = _RedisCls.from_url(_settings.REDIS_URL, decode_responses=False)
-    return _QueueCls("analysis", connection=_redis_conn)
+    return QueueCls("analysis", connection=_redis_conn)
 
 
 def enqueue_analysis_job(

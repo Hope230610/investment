@@ -8,6 +8,7 @@ Or for a specific queue:
 """
 from __future__ import annotations
 
+import os
 import sys
 
 
@@ -34,7 +35,9 @@ def main() -> None:
 
     try:
         from redis import Redis as RedisCls
+        from rq import SimpleWorker as RQSimpleWorkerCls
         from rq import Worker as RQWorkerCls
+        from rq.timeouts import TimerDeathPenalty
     except ImportError as exc:
         print(
             f"Cannot start RQ worker: {exc}.\n"
@@ -45,7 +48,10 @@ def main() -> None:
         sys.exit(1)
 
     redis_conn = RedisCls.from_url(settings.REDIS_URL, decode_responses=False)
-    worker = RQWorkerCls(["analysis"], connection=redis_conn)
+    worker_cls = RQSimpleWorkerCls if os.name == "nt" else RQWorkerCls
+    worker = worker_cls(["analysis"], connection=redis_conn)
+    if os.name == "nt":
+        worker.death_penalty_class = TimerDeathPenalty
     worker.work(with_scheduler=True)
 
 

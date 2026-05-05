@@ -78,16 +78,16 @@ rg -n "buy now|sell now|strong buy|strong sell|guaranteed|risk-free|target retur
 
 | Area | Evidence needed | Status |
 | --- | --- | --- |
-| Share card title / summary / disclaimer | Product + compliance reviewer approval on actual rendered copy | Conditional Pass |
-| Disclaimer wording | Confirm visible on result and share paths | Conditional Pass |
-| Sanitizer rules | Confirm high-risk phrases are blocked or rewritten in real outputs | Conditional Pass |
-| AI eval samples | Add real provider samples before live LLM launch | Conditional Pass |
+| Share card title / summary / disclaimer | Product + compliance reviewer approval on actual rendered copy | Engineering evidence recorded; pending human review |
+| Disclaimer wording | Confirm visible on result and share paths | Engineering evidence recorded; pending human review |
+| Sanitizer rules | Confirm high-risk phrases are blocked or rewritten in real outputs | Engineering evidence recorded; pending human review |
+| AI eval samples | Add real provider samples before live LLM launch | Engineering evidence recorded; pending human review |
 | Degraded data wording | Confirm low confidence and no strong conclusion when data is missing | Pass |
 | User privacy in share | Confirm no private holding amount / trade history leakage | Pass based on current service tests and audit |
 
 ## Sign-off Result
 
-Current compliance gate: **Conditional Pass for controlled staging / beta, Blocked for public production until human sign-off is recorded**.
+Current compliance gate: **Blocked**. Engineering evidence has been recorded, but controlled beta and public production remain blocked until named human compliance/legal sign-off is recorded.
 
 Required human sign-off fields:
 
@@ -130,9 +130,9 @@ High-risk phrase grep result:
 
 Formal sign-off result:
 
-- Engineering compliance review: **Conditional Pass for controlled staging / beta evidence**.
+- Engineering compliance review: evidence recorded only; not formal legal/compliance sign-off.
 - Formal human compliance/legal sign-off: **Blocked / Pending**.
-- Public production compliance gate: **Blocked** until a named human reviewer records a Pass or Conditional Pass below.
+- Public production compliance gate: **Blocked** until a named human reviewer records explicit production allowance.
 
 Human reviewer fields still required:
 
@@ -147,3 +147,172 @@ Residual risks:
 - Current AI provider path is deterministic rules-engine. A live LLM/provider launch still needs real provider output sampling before public production.
 - Share-page wording should be manually reviewed in the deployed UI, not only in code.
 - Users may still misinterpret decision-support language as recommendations; controlled beta should explicitly measure this.
+
+## Human Compliance / Legal Sign-off Record - Pending
+
+Reviewer name: Pending; no named human compliance/legal reviewer was provided in this environment.
+
+Role: Pending.
+
+Date: Pending.
+
+Scope required:
+
+- Public share card title, summary, disclaimer, and rendered UI.
+- Result-page disclaimer and degraded-data wording.
+- Sanitizer and guard behavior for high-risk Chinese and English phrases.
+- AI eval sample coverage, including real provider samples before any live LLM launch.
+- User-visible flows for home/today focus, single-stock analysis, pre-trade self-check, post-trade review, portfolio context, reminders, learning feedback, and public share pages.
+
+Reviewed materials: Pending human review. Engineering evidence currently includes this sign-off pack, `P4_ONLINE_READINESS_AUDIT.md`, `P4_ONLINE_READINESS_CHECKLIST.md`, sanitizer / guard tests, AI eval tests, share service tests, and high-risk phrase grep evidence.
+
+Conclusion: **Blocked / Pending**.
+
+Notes:
+
+- This record intentionally does not convert the engineering conditional review into a formal legal/compliance Pass.
+- No human reviewer signature or approval was available during the Redis-backed staging acceptance attempt.
+- Public production remains blocked until this section is completed by a named human reviewer.
+
+Remaining risk:
+
+- Users may interpret share-card or result language as investment recommendations without human wording review.
+- Current deterministic AI eval evidence does not substitute for live provider output review.
+- Sanitizer rules should be confirmed against deployed UI behavior and representative generated samples.
+
+## AI-assisted engineering compliance review record - 2026-05-05
+
+Reviewer name: Codex AI-assisted review, not a named human legal/compliance reviewer.
+
+Reviewer role: AI-assisted engineering compliance reviewer; not licensed legal/compliance sign-off.
+
+Review date: 2026-05-05.
+
+Review scope:
+
+- P4 compliance pack.
+- Online readiness audit/checklist.
+- Controlled beta plan.
+- Share card/result/pre-trade/post-trade/reminder/user-visible boundary copy.
+- Sanitizer/guard/AI eval samples.
+- High-risk phrase grep evidence.
+
+Reviewed materials:
+
+- `P4_COMPLIANCE_SIGNOFF_PACK.md`.
+- `P4_ONLINE_READINESS_AUDIT.md`.
+- `P4_ONLINE_READINESS_CHECKLIST.md`.
+- `P4_CONTROLLED_BETA_PLAN.md`.
+- `share_service`, `ai_eval_service`, `output_quality_service`.
+- Frontend Home/Me/Portfolio visible disclaimer copy.
+- Related sanitizer/share/AI eval/output quality tests.
+
+Conclusion: **Blocked**.
+
+Production launch allowed: **No**.
+
+Controlled beta allowed: **No**.
+
+Notes:
+
+- Current materials show strong engineering compliance evidence: user-visible high-risk phrases appear limited to explicit non-advice copy, tests, sanitizer/guard lists, and replacement maps.
+- Share card disclaimer states it is not investment advice, return promise, or buy/sell instruction.
+- Result structure requires evidence, counter-evidence, risks, invalidation conditions, timestamp, and confidence.
+- Degraded/low-confidence paths avoid strong conclusions.
+- This AI-assisted review does not constitute named human legal/compliance sign-off.
+- Treating this response as formal human sign-off would violate the project audit rule.
+- Therefore P4 must remain **Blocked** until a real named human reviewer records role, date, scope, conclusion, notes, remaining risk, and explicit production/beta allowance.
+
+Remaining risks:
+
+- Share cards may still be interpreted by users as recommendation propagation without real human wording review.
+- Live LLM/provider outputs have not been reviewed with real provider samples.
+- Sanitizer behavior should be verified against deployed UI and representative generated outputs.
+- Some visible copy should be checked in the actual rendered app, not only source/test evidence.
+
+Must fix before launch:
+
+- Obtain named human compliance/legal sign-off.
+- Record reviewer name, role, review date, reviewed scope/materials, conclusion, notes, and remaining risks.
+- Explicitly state whether controlled beta is allowed.
+- Explicitly state whether public production launch is allowed.
+- Keep all non-advice, no-return-promise, and no-buy/sell-instruction disclaimers in user-visible flows.
+
+Formal human sign-off status: **Pending / Blocked**.
+
+## Redis-backed Staging Rerun Compliance Status - 2026-05-05
+
+Reviewer name: Pending; no named human compliance/legal reviewer was provided.
+
+Role: Pending.
+
+Date: Pending.
+
+Scope required for formal review:
+
+- Public share card title, summary, disclaimer, and rendered UI.
+- Result-page disclaimer, degraded-data wording, confidence, evidence, counter-evidence, and invalidation conditions.
+- Sanitizer and guard behavior for high-risk Chinese and English phrases.
+- AI eval deterministic samples and real provider samples before any live LLM launch.
+- Home/today focus, single-stock analysis, pre-trade self-check, post-trade review, portfolio context, reminders, learning feedback, and public share pages.
+
+Reviewed materials available:
+
+- `P4_ONLINE_READINESS_AUDIT.md`.
+- `P4_ONLINE_READINESS_CHECKLIST.md`.
+- Share service tests, AI eval tests, output quality tests, and high-risk phrase grep evidence.
+- Redis/RQ topology acceptance evidence and MockMarket/RealMarket Full E2E evidence from the Redis-backed rerun.
+
+Conclusion: **Blocked / Pending** for public production.
+
+Notes:
+
+- Redis/RQ topology and the full technical checklist now have passing evidence.
+- This does not complete legal/compliance sign-off.
+- Engineering evidence remains engineering review material only and does not allow controlled beta or public production.
+
+Remaining risk:
+
+- Formal human reviewer has not accepted the exact public share-card and disclaimer wording.
+- Users may still interpret decision-support language as recommendations without human review.
+- Real provider output review remains required before public live LLM use.
+
+## P4 Compliance Sign-off Closure Decision - 2026-05-05
+
+Reviewer name: Pending; no named human compliance/legal reviewer was provided.
+
+Reviewer role: Pending.
+
+Review date: Pending.
+
+Review scope required:
+
+- Share card rendered title, summary, disclaimer, privacy behavior, and absence of buy/sell signal wording.
+- Single-stock result evidence, counter-evidence, risks, invalidation conditions, timestamp, confidence, and non-advice boundary.
+- Pre-trade self-check and post-trade review wording.
+- Portfolio, holdings, reminder, learning feedback, home/today focus, failure fallback, and public share flows.
+- Sanitizer / guard behavior for high-risk Chinese and English phrases.
+- AI eval samples, including real provider samples before any live LLM production use.
+
+Reviewed materials available for the human reviewer:
+
+- `P4_COMPLIANCE_SIGNOFF_PACK.md`.
+- `P4_ONLINE_READINESS_AUDIT.md`.
+- `P4_ONLINE_READINESS_CHECKLIST.md`.
+- Share service, sanitizer / guard, output quality, and AI eval tests.
+- High-risk phrase grep evidence across backend/frontend source and tests.
+- Redis/RQ, MockMarket, RealMarket, backend, frontend, and Alembic technical acceptance evidence.
+
+Conclusion: **Blocked / Pending**.
+
+Formal compliance/legal sign-off conclusion: **Not completed**.
+
+Public production launch allowed: **No**.
+
+Controlled beta allowed: **No**, unless a named human compliance/legal reviewer explicitly records Pass or Conditional Pass with beta allowance.
+
+Notes:
+
+- Engineering evidence remains engineering evidence only.
+- This section intentionally does not create, infer, or substitute a legal/compliance approval.
+- The P4 final gate must remain Blocked while reviewer name, role, date, scope, conclusion, and notes are missing.

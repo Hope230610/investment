@@ -31,7 +31,9 @@ Controlled beta may start only after:
 - Backend and frontend core tests pass.
 - Deployment runbook and rollback path are reviewed.
 
-Current status on 2026-05-05: RealMarket and MockMarket Full E2E are passing, but controlled beta remains blocked until Redis/RQ topology, named human compliance/legal sign-off, and the Redis-backed staging checklist are complete.
+Current status on 2026-05-05: **Controlled beta is not allowed**.
+
+RealMarket and MockMarket Full E2E are passing, Redis/RQ topology acceptance is passing, and the Redis-backed staging checklist has passing technical evidence. However, the AI-assisted engineering compliance review is not a formal named human legal/compliance sign-off and cannot unlock beta. Controlled beta remains blocked until a named human compliance/legal reviewer explicitly records **Conditional Pass** or **Pass** and states that controlled beta is allowed.
 
 ## User-facing Risk Controls
 
@@ -96,4 +98,14 @@ Move from controlled beta toward production review only if:
 
 ## Current Recommendation
 
-Do not open public production. Prepare controlled beta only after remaining P4 blockers are closed.
+Do not open public production. Do not start controlled beta.
+
+Controlled beta may be re-evaluated only after named human compliance/legal sign-off is recorded with:
+
+- Reviewer name and role.
+- Review date.
+- Reviewed scope/materials.
+- Conclusion of Conditional Pass or Pass.
+- Notes and remaining risks.
+- Explicit statement that controlled beta is allowed.
+- Explicit statement on whether public production launch is allowed.

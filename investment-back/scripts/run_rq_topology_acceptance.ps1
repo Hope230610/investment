@@ -59,20 +59,20 @@ function Get-AuthToken() {
 function Test-RqJobForAnalysis([string]$AnalysisId) {
     $env:REDIS_URL = $RedisUrl
     $env:ANALYSIS_ID = $AnalysisId
-    & $PythonExe -c @"
+    & $PythonExe -c @'
 import os
 from redis import Redis
 from rq import Queue
 from rq.job import Job
 from rq.registry import StartedJobRegistry, FinishedJobRegistry, FailedJobRegistry, DeferredJobRegistry
 
-redis_conn = Redis.from_url(os.environ["REDIS_URL"], decode_responses=False)
-queue = Queue("analysis", connection=redis_conn)
-analysis_id = os.environ["ANALYSIS_ID"]
+redis_conn = Redis.from_url(os.environ['REDIS_URL'], decode_responses=False)
+queue = Queue('analysis', connection=redis_conn)
+analysis_id = os.environ['ANALYSIS_ID']
 
 job_ids = set(queue.job_ids)
 for registry_cls in (StartedJobRegistry, FinishedJobRegistry, FailedJobRegistry, DeferredJobRegistry):
-    job_ids.update(registry_cls("analysis", connection=redis_conn).get_job_ids())
+    job_ids.update(registry_cls('analysis', connection=redis_conn).get_job_ids())
 
 matched = []
 for job_id in job_ids:
@@ -80,16 +80,16 @@ for job_id in job_ids:
         job = Job.fetch(job_id, connection=redis_conn)
     except Exception:
         continue
-    args = " ".join(str(arg) for arg in (job.args or ()))
+    args = ' '.join(str(arg) for arg in (job.args or ()))
     if analysis_id in args:
         matched.append((job_id, job.get_status(refresh=True)))
 
 if not matched:
-    raise SystemExit(f"no RQ job found for analysis_id={analysis_id}")
+    raise SystemExit(f'no RQ job found for analysis_id={analysis_id}')
 
 for job_id, status in matched:
-    print(f"rq_job={job_id} status={status}")
-"@
+    print(f'rq_job={job_id} status={status}')
+'@
 }
 
 $env:RQ_ASYNC = "false"
@@ -140,8 +140,8 @@ if (-not $SkipFrontendCheck) {
 
 $token = $null
 Invoke-Step "Acceptance user auth" {
-    $token = Get-AuthToken
-    if ([string]::IsNullOrWhiteSpace($token)) {
+    $script:token = Get-AuthToken
+    if ([string]::IsNullOrWhiteSpace($script:token)) {
         throw "authentication did not return an access token"
     }
     Write-Host "auth=ok user=$User"
@@ -150,7 +150,7 @@ Invoke-Step "Acceptance user auth" {
 $analysisId = $null
 $createStatus = $null
 Invoke-Step "Create analysis task through API" {
-    $headers = @{ Authorization = "Bearer $token" }
+    $headers = @{ Authorization = "Bearer $script:token" }
     $payload = @{
         stock_id = $StockId
         scenario = "single_stock_check"
@@ -167,25 +167,25 @@ Invoke-Step "Create analysis task through API" {
     if ($elapsed.TotalSeconds -gt $PostMaxSeconds) {
         throw "POST /analysis took $([math]::Round($elapsed.TotalSeconds, 2))s; expected quick enqueue under ${PostMaxSeconds}s"
     }
-    $analysisId = $script:createResponse.id
-    $createStatus = $script:createResponse.status
-    if ([string]::IsNullOrWhiteSpace($analysisId)) {
+    $script:analysisId = $script:createResponse.id
+    $script:createStatus = $script:createResponse.status
+    if ([string]::IsNullOrWhiteSpace($script:analysisId)) {
         throw "analysis create did not return an id: $($script:createResponse | ConvertTo-Json -Compress)"
     }
-    Write-Host "analysis_id=$analysisId create_status=$createStatus post_seconds=$([math]::Round($elapsed.TotalSeconds, 2))"
+    Write-Host "analysis_id=$script:analysisId create_status=$script:createStatus post_seconds=$([math]::Round($elapsed.TotalSeconds, 2))"
 }
 
 Invoke-Step "RQ job is present for analysis task" {
-    Test-RqJobForAnalysis -AnalysisId $analysisId
+    Test-RqJobForAnalysis -AnalysisId $script:analysisId
 }
 
 Invoke-Step "Poll analysis until worker terminal state" {
-    $headers = @{ Authorization = "Bearer $token" }
+    $headers = @{ Authorization = "Bearer $script:token" }
     $deadline = (Get-Date).AddSeconds($PollTimeoutSeconds)
     $lastStatus = $null
     $terminal = @("ready", "partial_ready", "failed")
     while ((Get-Date) -lt $deadline) {
-        $result = Invoke-JsonRequest -Method "GET" -Uri "$BackendUrl/api/v1/analysis/$analysisId" -Headers $headers
+        $result = Invoke-JsonRequest -Method "GET" -Uri "$BackendUrl/api/v1/analysis/$script:analysisId" -Headers $headers
         $lastStatus = $result.status
         Write-Host "analysis_status=$lastStatus"
         if ($terminal -contains $lastStatus) {
