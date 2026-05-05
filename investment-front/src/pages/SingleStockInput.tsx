@@ -25,7 +25,10 @@ export default function SingleStockInput() {
       const data = await apiPost<{ id: string }>('/api/v1/analysis', {
         scenario: 'single_stock_check',
         stock_id: stockId,
-        scenario_payload: { focus_reason: reason.trim() || undefined },
+        scenario_payload: {
+          focus_reason: reason.trim() || undefined,
+          stock_name: stockName || undefined,
+        },
       });
       navigate(`/analysis/${data.id}/result`);
     } catch (submitError) {

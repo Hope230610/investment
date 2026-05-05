@@ -58,7 +58,7 @@ class Settings(BaseSettings):
     AI_API_TIMEOUT: int = 30
 
     # Market data
-    STOCK_DATA_TIMEOUT: float = 8.0
+    STOCK_DATA_TIMEOUT: float = 3.0
     STOCK_DATA_CACHE_SECONDS: int = 180
     STOCK_NOTICE_LOOKBACK_DAYS: int = 30
 

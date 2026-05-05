@@ -137,26 +137,71 @@ class MarketDataService:
         self.cache.set(cache_key, items, self.settings.STOCK_DATA_CACHE_SECONDS)
         return items
 
-    def get_stock_detail(self, stock_id: str) -> StockDetail:
+    def _get_stock_detail_legacy_unused(self, stock_id: str) -> StockDetail:
         if self.mock_enabled:
             return self._mock_stock_detail(stock_id)
 
         market, stock_code = self.normalize_stock_id(stock_id)
-        search_match = self._resolve_stock_search_item(stock_id)
-        quote_snapshot = self._fetch_quote_snapshot(market, stock_code)
-        recent_history = self._fetch_recent_history(market, stock_code)
-        company_profile = self._fetch_company_profile(market, stock_code)
+        search_match = self._safe_call(
+            "stock_search_match_failed",
+            lambda: self._resolve_stock_search_item(stock_id),
+            stock_code=stock_code,
+            default=None,
+        )
+        quote_snapshot = self._safe_call(
+            "quote_snapshot_failed",
+            lambda: self._fetch_quote_snapshot(market, stock_code),
+            stock_code=stock_code,
+            default=None,
+        )
+        recent_history = self._safe_call(
+            "recent_history_failed",
+            lambda: self._fetch_recent_history(market, stock_code),
+            stock_code=stock_code,
+            default=[],
+        )
+        company_profile = self._safe_call(
+            "company_profile_failed",
+            lambda: self._fetch_company_profile(market, stock_code),
+            stock_code=stock_code,
+            default=StockCompanyProfile(
+                description=None,
+                business_scope=None,
+                board_name=None,
+                listing_date=None,
+                source_url=self.QUOTE_PAGE_URL.format(symbol=f"{market.lower()}{stock_code}"),
+            ),
+        )
         stock_name = (
             (search_match.stock_name if search_match else None)
             or self._extract_name_from_profile(company_profile)
             or f"{market}{stock_code}"
         )
-        recent_events = self._fetch_recent_events(stock_code, stock_name)
+        recent_events = self._safe_call(
+            "recent_events_failed",
+            lambda: self._fetch_recent_events(stock_code, stock_name),
+            stock_code=stock_code,
+            default=[],
+        )
         industry = (
             (search_match.industry if search_match else None)
             or company_profile.board_name
             or self._infer_industry_from_profile(company_profile)
         )
+        data_sources: list[str] = []
+        if quote_snapshot:
+            data_sources.append("tencent_quote")
+        if recent_history:
+            data_sources.append("tencent_history")
+        if search_match:
+            data_sources.append("eastmoney_search")
+        if company_profile and (company_profile.description or company_profile.board_name):
+            data_sources.append("eastmoney_profile")
+        if recent_events:
+            data_sources.append("cninfo_announcements")
+        if not data_sources:
+            data_sources.append("external_market_data_degraded")
+
         detail = StockDetail(
             stock_id=f"{market}{stock_code}",
             stock_code=stock_code,
@@ -179,6 +224,91 @@ class MarketDataService:
             ],
         )
         return detail
+
+    def get_stock_detail(self, stock_id: str) -> StockDetail:
+        if self.mock_enabled:
+            return self._mock_stock_detail(stock_id)
+
+        market, stock_code = self.normalize_stock_id(stock_id)
+        symbol = f"{market.lower()}{stock_code}"
+        profile_default = StockCompanyProfile(
+            description=None,
+            business_scope=None,
+            board_name=None,
+            listing_date=None,
+            source_url=self.QUOTE_PAGE_URL.format(symbol=symbol),
+        )
+
+        search_match = self._safe_call(
+            "stock_search_match_failed",
+            lambda: self._resolve_stock_search_item(stock_id),
+            default=None,
+            stock_code=stock_code,
+        )
+        quote_snapshot = self._safe_call(
+            "quote_snapshot_failed",
+            lambda: self._fetch_quote_snapshot(market, stock_code),
+            default=None,
+            stock_code=stock_code,
+        )
+        recent_history = self._safe_call(
+            "recent_history_failed",
+            lambda: self._fetch_recent_history(market, stock_code),
+            default=[],
+            stock_code=stock_code,
+        )
+        company_profile = self._safe_call(
+            "company_profile_failed",
+            lambda: self._fetch_company_profile(market, stock_code),
+            default=profile_default,
+            stock_code=stock_code,
+        )
+        stock_name = (
+            (search_match.stock_name if search_match else None)
+            or self._extract_name_from_profile(company_profile)
+            or f"{market}{stock_code}"
+        )
+        recent_events = self._safe_call(
+            "recent_events_failed",
+            lambda: self._fetch_recent_events(stock_code, stock_name),
+            default=[],
+            stock_code=stock_code,
+        )
+        industry = (
+            (search_match.industry if search_match else None)
+            or company_profile.board_name
+            or self._infer_industry_from_profile(company_profile)
+        )
+
+        data_sources: list[str] = []
+        if quote_snapshot:
+            data_sources.append("tencent_quote")
+        if recent_history:
+            data_sources.append("tencent_history")
+        if search_match:
+            data_sources.append("eastmoney_search")
+        if company_profile and (company_profile.description or company_profile.board_name):
+            data_sources.append("eastmoney_profile")
+        if recent_events:
+            data_sources.append("cninfo_announcements")
+        if not data_sources:
+            data_sources.append("external_market_data_degraded")
+
+        return StockDetail(
+            stock_id=f"{market}{stock_code}",
+            stock_code=stock_code,
+            stock_name=stock_name,
+            market=market,
+            industry=industry,
+            security_type=search_match.security_type if search_match else None,
+            pinyin=search_match.pinyin if search_match else None,
+            quote_id=search_match.quote_id if search_match else None,
+            quote_snapshot=quote_snapshot,
+            company_profile=company_profile,
+            recent_events=recent_events,
+            recent_history=recent_history,
+            data_sources=data_sources,
+        )
 
     def normalize_stock_id(self, value: str) -> tuple[str, str]:
         raw = value.strip().upper()
@@ -463,6 +593,13 @@ class MarketDataService:
         response = self.client.get(url, params=params)
         response.raise_for_status()
         return response.json()
+
+    def _safe_call(self, event: str, func, default: Any, **log_context: Any) -> Any:
+        try:
+            return func()
+        except (httpx.HTTPError, json.JSONDecodeError, ValueError, TypeError, KeyError) as exc:
+            self.logger.warning(event, error=str(exc), **log_context)
+            return default
 
     def _mock_search_stocks(self, query: str, limit: int) -> list[StockSearchItem]:
         normalized = query.strip().upper()

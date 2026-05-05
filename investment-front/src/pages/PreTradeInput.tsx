@@ -71,6 +71,7 @@ export default function PreTradeInput() {
           emotion_level: emotion,
           self_check_answers: answers,
           show_self_check: showSelfCheck,
+          stock_name: stockName || undefined,
         },
       });
       navigate(`/analysis/${data.id}/result`);

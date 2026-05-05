@@ -120,13 +120,37 @@ async def create_analysis(
         user_id=current_user.id,
     )
 
-    stock_detail = _load_stock_detail_or_502(market_data_service, analysis_data.stock_id, request)
-    if isinstance(stock_detail, JSONResponse):
-        return stock_detail
+    normalizer = (
+        market_data_service.normalize_stock_id
+        if hasattr(market_data_service, "normalize_stock_id")
+        else MarketDataService().normalize_stock_id
+    )
+    try:
+        market, stock_code = normalizer(analysis_data.stock_id)
+    except ValueError:
+        return api_error(404, "STOCK_NOT_FOUND", "鑲＄エ鏍囪瘑鏃犳晥", request)
 
-    _upsert_stock_record(db, stock_detail)
+    normalized_stock_id = f"{market}{stock_code}"
+    if normalized_stock_id != analysis_data.stock_id:
+        analysis_data = analysis_data.model_copy(update={"stock_id": normalized_stock_id})
 
     payload = dict(analysis_data.scenario_payload or {})
+    display_stock_name = str(payload.get("stock_name") or normalized_stock_id).strip() or normalized_stock_id
+    if hasattr(db, "query"):
+        stock = db.query(StockModel).filter(StockModel.stock_id == normalized_stock_id).first()
+        if not stock:
+            stock = StockModel(
+                stock_id=normalized_stock_id,
+                stock_name=display_stock_name,
+                market=market,
+            )
+            db.add(stock)
+            db.commit()
+        else:
+            if stock.stock_name == stock.stock_id and display_stock_name != normalized_stock_id:
+                stock.stock_name = display_stock_name
+                db.commit()
+
     payload.pop("holding_context", None)
     payload.pop("growth_caution_context", None)
 
@@ -312,9 +336,14 @@ def _get_analysis_from_new_tables(
     recent_events = list(stock_detail.recent_events) if stock_detail else []
     data_sources = list(stock_detail.data_sources) if stock_detail else []
     data_as_of = stock_snapshot.data_as_of if stock_snapshot else None
-    stock_name = stock_detail.stock_name if stock_detail else task.stock_id
-    stock_market = stock_detail.market if stock_detail else None
-    stock_industry = stock_detail.industry if stock_detail else None
+    stored_stock = db.query(StockModel).filter(StockModel.stock_id == task.stock_id).first()
+    stock_name = (
+        stock_detail.stock_name
+        if stock_detail
+        else (stored_stock.stock_name if stored_stock else task.stock_id)
+    )
+    stock_market = stock_detail.market if stock_detail else (stored_stock.market if stored_stock else None)
+    stock_industry = stock_detail.industry if stock_detail else (stored_stock.industry if stored_stock else None)
 
     return GetAnalysisResponseV2(
         analysis_id=str(task.id),

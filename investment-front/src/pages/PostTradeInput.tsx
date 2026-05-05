@@ -59,6 +59,7 @@ export default function PostTradeInput() {
           judgement_quality: judgementQuality,
           behavior_patterns: behaviorPatterns,
           emotion_level: emotionLevel,
+          stock_name: stockName || undefined,
           // 如果是从 ReviewsPage 入口来的，携带原始 review task UUID
           pending_review_task_id: pendingReviewTaskId || undefined,
         },

@@ -1,5 +1,6 @@
 from datetime import datetime
 
+import httpx
 import pytest
 
 from src.services.market_data_service import MarketDataService
@@ -46,5 +47,27 @@ def test_mock_market_rejects_unknown_stock(monkeypatch):
     try:
         with pytest.raises(ValueError):
             service.get_stock_detail("SH999999")
+    finally:
+        service.close()
+
+
+def test_real_market_detail_degrades_when_external_http_fails(monkeypatch):
+    monkeypatch.delenv("E2E_MOCK_MARKET", raising=False)
+    monkeypatch.delenv("MOCK_MARKET_DATA", raising=False)
+
+    def fail_external_call(*args, **kwargs):
+        raise httpx.ConnectError("simulated upstream outage")
+
+    monkeypatch.setattr("httpx.Client.get", fail_external_call)
+    monkeypatch.setattr("httpx.Client.post", fail_external_call)
+
+    service = MarketDataService()
+    try:
+        detail = service.get_stock_detail("SH600519")
+        assert detail.stock_id == "SH600519"
+        assert detail.quote_snapshot is None
+        assert detail.recent_history == []
+        assert detail.recent_events == []
+        assert detail.data_sources == ["external_market_data_degraded"]
     finally:
         service.close()

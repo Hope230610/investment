@@ -74,8 +74,8 @@ test('single-stock analysis: submit → result page renders', async ({ page }) =
   // "下一步建议动作" section
   await expect(page.getByText(/下一步建议/i)).toBeVisible();
 
-  // Result status is 'ready'
-  expect(result.status).toBe('ready');
+  // Real-market runs may return a compliant degraded result when external data is incomplete.
+  expect(['ready', 'partial_ready']).toContain(result.status);
 });
 
 // ─── Scenario: Pre-Trade Check ───────────────────────────────────────────────
@@ -122,7 +122,7 @@ test('pre-trade check: high-emotion flow → self-check panel shown', async ({ p
   const analysisId = getAnalysisIdFromResultUrl(page);
   const result = await pollAnalysisResult<Record<string, unknown>>(page, analysisId, 'ready', 60_000);
 
-  expect(result.status).toBe('ready');
+  expect(['ready', 'partial_ready']).toContain(result.status);
   // intervention should be present when emotion is high + trigger is chasing
   const intervention = result.intervention as Record<string, unknown> | undefined;
   expect(intervention).toBeTruthy();
@@ -151,7 +151,7 @@ test('post-trade review: submit → result page → learning feedback card shown
   // Poll for result
   const analysisId = getAnalysisIdFromResultUrl(page);
   const result = await pollAnalysisResult<Record<string, unknown>>(page, analysisId, 'ready', 60_000);
-  expect(result.status).toBe('ready');
+  expect(['ready', 'partial_ready']).toContain(result.status);
 
   // Learning feedback card should appear (800ms delay in ResultPage)
   await waitForFeedbackCard(page, 6_000);

@@ -161,7 +161,8 @@ export async function pollAnalysisResult<T = Record<string, unknown>>(
     if (json.status === 'failed') {
       throw new Error(`Analysis ${analysisId} failed: ${JSON.stringify(json)}`);
     }
-    if (json.status === targetStatus) {
+    const terminalDegraded = targetStatus === 'ready' && json.status === 'partial_ready';
+    if (json.status === targetStatus || terminalDegraded) {
       await waitForResultPageSync(page, analysisId, json, targetStatus);
       return json as T;
     }

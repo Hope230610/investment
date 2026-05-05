@@ -48,7 +48,7 @@ test('ready result contains all four evidence fields', async ({ page }) => {
   const analysisId = getAnalysisIdFromResultUrl(page);
   const result = await pollAnalysisResult<AnalysisDetail>(page, analysisId, 'ready', 60_000);
 
-  expect(result.status).toBe('ready');
+  expect(['ready', 'partial_ready']).toContain(result.status);
   expect(result.decision_card).toBeTruthy();
 
   const card = result.decision_card;
