@@ -70,9 +70,9 @@ def _migrate_behavior_interventions():
             ac.user_id,
             at.id,
             ac.created_at,
-            (ac.intervention ->> 'behavior_type')::behaviortypeenum,
-            (ac.intervention ->> 'severity')::severitylevelenum,
-            ac.intervention -> 'questions',
+            (ac.intervention::jsonb ->> 'behavior_type')::behaviortypeenum,
+            (ac.intervention::jsonb ->> 'severity')::severitylevelenum,
+            ac.intervention::jsonb -> 'questions',
             FALSE  -- 历史数据无用户确认记录
         FROM analyses ac
         LEFT JOIN analysis_tasks at
@@ -80,8 +80,8 @@ def _migrate_behavior_interventions():
             AND at.stock_id  = ac.stock_id
             AND at.created_at = ac.created_at
         WHERE ac.intervention IS NOT NULL
-            AND ac.intervention != 'null'::jsonb
-            AND ac.intervention ? 'behavior_type'
+            AND ac.intervention::jsonb != 'null'::jsonb
+            AND ac.intervention::jsonb ? 'behavior_type'
         ON CONFLICT DO NOTHING
     """)
 

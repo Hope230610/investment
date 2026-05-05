@@ -72,7 +72,7 @@ def upgrade() -> None:
         sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
         sa.Column('user_id', sa.Integer(), nullable=False),
         sa.Column('stock_id', sa.String(length=20), nullable=False),
-        sa.Column('scenario', sa.Enum('SINGLE_STOCK_CHECK', 'PRE_TRADE_CHECK', 'POST_TRADE_REVIEW', name='interactionscenario'), nullable=False),
+        sa.Column('scenario', sa.Enum('single_stock_check', 'pre_trade_check', 'post_trade_review', name='interactionscenario'), nullable=False),
         sa.Column('status', sa.Enum('PROCESSING', 'READY', 'EXPIRED', 'FAILED', name='analysisstatus'), nullable=False),
         sa.Column('headline', sa.String(length=255), nullable=True),
         sa.Column('scenario_payload', sa.JSON(), nullable=True),

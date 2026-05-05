@@ -25,6 +25,7 @@ from src.models.analysis_result import AnalysisResult  # noqa: E402
 from src.models.behavior_intervention import BehaviorIntervention  # noqa: E402
 from src.models.emotion_history import EmotionHistory  # noqa: E402
 from src.models.judgment_history import JudgmentHistory  # noqa: E402
+from src.models.p3 import PlanCodeEnum, UsageCounter, UserEntitlement  # noqa: E402
 from src.models.stock import Stock  # noqa: E402
 from src.models.user import (  # noqa: E402
     BehaviorTag,
@@ -123,6 +124,7 @@ def reset_user_state(db, user: User) -> None:
     db.query(FocusReason).filter(FocusReason.user_id == user.id).delete(synchronize_session=False)
     db.query(UserAction).filter(UserAction.user_id == user.id).delete(synchronize_session=False)
     db.query(BehaviorIntervention).filter(BehaviorIntervention.user_id == user.id).delete(synchronize_session=False)
+    db.query(UsageCounter).filter(UsageCounter.user_id == user.id).delete(synchronize_session=False)
 
     if task_ids:
         db.query(AnalysisResult).filter(AnalysisResult.analysis_task_id.in_(task_ids)).delete(synchronize_session=False)
@@ -138,6 +140,13 @@ def reset_user_state(db, user: User) -> None:
         profile.holding_horizon = HoldingHorizon.MEDIUM
         profile.risk_tolerance = RiskTolerance.MEDIUM
         profile.behavior_tags = []
+
+    entitlement = db.query(UserEntitlement).filter(UserEntitlement.user_id == user.id).first()
+    if entitlement is None:
+        entitlement = UserEntitlement(user_id=user.id)
+        db.add(entitlement)
+    entitlement.plan_code = PlanCodeEnum.PRO
+    entitlement.feature_flags = {"e2e_test_user": True}
 
 
 def seed_stocks(db) -> None:

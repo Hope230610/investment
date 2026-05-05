@@ -11,7 +11,7 @@ Create Date: 2026-04-07 00:00:00.000000
 """
 from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import UUID, JSON
+from sqlalchemy.dialects.postgresql import UUID, JSON, ENUM
 import uuid
 
 # revision identifiers, used by Alembic.
@@ -45,13 +45,14 @@ def upgrade() -> None:
         ),
         sa.Column(
             "action_type",
-            sa.Enum(
+            ENUM(
                 "scenario_selected",
                 "analysis_submitted",
                 "behavior_intervention_shown",
                 "cooldown_started",
                 "review_task_completed",
                 name=USER_ACTION_TYPE_ENUM,
+                create_type=False,
             ),
             nullable=False,
         ),

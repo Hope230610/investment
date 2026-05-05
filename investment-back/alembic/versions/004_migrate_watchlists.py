@@ -12,7 +12,7 @@ Create Date: 2026-04-07 00:00:00.000000
 """
 from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import UUID, JSON
+from sqlalchemy.dialects.postgresql import UUID, JSON, ENUM
 import uuid
 
 # revision identifiers, used by Alembic.
@@ -48,7 +48,7 @@ def upgrade() -> None:
         ),
         sa.Column(
             "added_from_scenario",
-            sa.Enum("single_stock_check", "pre_trade_check", "post_trade_review", name=ADDED_FROM_SCENARIO_ENUM),
+            ENUM("single_stock_check", "pre_trade_check", "post_trade_review", name=ADDED_FROM_SCENARIO_ENUM, create_type=False),
             nullable=True,
         ),
         sa.Column(
@@ -95,7 +95,7 @@ def _migrate_watchlist_items():
         )
         SELECT
             gen_random_uuid(),
-            user_id::text,
+            user_id,
             stock_id,
             created_at,
             updated_at,
@@ -122,7 +122,7 @@ def _migrate_focus_reasons():
             updated_at = NOW()
         FROM focus_reasons fr
         WHERE
-            w.user_id = fr.user_id::text
+            w.user_id = fr.user_id
             AND w.stock_id = fr.stock_id
             AND w.focus_reason IS NULL
     """)
@@ -133,7 +133,7 @@ def _migrate_focus_reasons():
         UPDATE watchlists w
         SET
             source_analysis_id = at.id,
-            added_from_scenario = LOWER(ac.scenario)::addedfromscenarioenum,
+            added_from_scenario = LOWER(ac.scenario::text)::addedfromscenarioenum,
             updated_at = NOW()
         FROM focus_reasons fr
         JOIN analyses ac
@@ -143,7 +143,7 @@ def _migrate_focus_reasons():
             AND at.stock_id   = ac.stock_id
             AND at.created_at = ac.created_at
         WHERE
-            w.user_id = fr.user_id::text
+            w.user_id = fr.user_id
             AND w.stock_id = fr.stock_id
             AND w.source_analysis_id IS NULL
     """)
