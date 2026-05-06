@@ -45,6 +45,11 @@ class AnalysisGenerationService:
         scenario_payload = scenario_payload or {}
         metrics = self._build_metrics(detail.quote_snapshot, detail.recent_history, detail.recent_events)
 
+        if scenario == InteractionScenario.PRE_TRADE_CHECK and scenario_payload.get("decision_domain") == "campus_consumption":
+            result = self._build_campus_consumption_result(detail, scenario_payload, intervention)
+            self._apply_growth_caution_context(result, scenario_payload)
+            return result
+
         if not detail.quote_snapshot and not detail.recent_history:
             result = self._build_insufficient_data_result(detail, scenario, intervention)
             self._apply_holding_context(result, scenario_payload)
@@ -230,6 +235,9 @@ class AnalysisGenerationService:
         scenario_payload: dict[str, Any],
         intervention: BehaviorIntervention | None,
     ) -> AnalysisResult:
+        if scenario_payload.get("decision_domain") == "campus_consumption":
+            return self._build_campus_consumption_result(detail, scenario_payload, intervention)
+
         risk_score = metrics["risk_score"]
         intent = str(scenario_payload.get("intent") or "").lower()
         trigger = str(scenario_payload.get("trigger_reason") or "")
@@ -329,6 +337,138 @@ class AnalysisGenerationService:
                 case_example=(
                     "就像出门前看天气，如果你只是因为别人说“今天可能不错”就不带伞，"
                     "风险往往不在天气本身，而在你没有做最后一次确认。"
+                ),
+            ),
+        )
+
+    def _build_campus_consumption_result(
+        self,
+        detail: StockDetail,
+        scenario_payload: dict[str, Any],
+        intervention: BehaviorIntervention | None,
+    ) -> AnalysisResult:
+        item_name = str(scenario_payload.get("stock_name") or detail.stock_name or "本次消费")
+        intent = str(scenario_payload.get("intent") or "purchase")
+        trigger = str(scenario_payload.get("trigger_reason") or "未填写")
+        emotion_level = int(scenario_payload.get("emotion_level") or 3)
+        monthly_allowance = float(scenario_payload.get("monthly_allowance") or 0)
+        spent_this_month = float(scenario_payload.get("spent_this_month") or 0)
+        fallback_price = detail.quote_snapshot.latest_price if detail.quote_snapshot else 0
+        item_price = float(scenario_payload.get("item_price") or fallback_price or 0)
+        installment_months = int(scenario_payload.get("installment_months") or 1)
+        remaining = max(monthly_allowance - spent_this_month, 0)
+        price_ratio = (item_price / monthly_allowance) if monthly_allowance else 0
+        monthly_payment = item_price / installment_months if installment_months else item_price
+
+        risks: list[str] = []
+        if emotion_level >= 4:
+            risks.append("冲动消费")
+        if trigger in {"同学都换新机", "博主种草"}:
+            risks.append("盲目跟风")
+        if item_price > remaining:
+            risks.append("预算透支")
+        if installment_months >= 6:
+            risks.append("分期依赖")
+        if not risks:
+            risks.append("预算边界不清")
+
+        headline = "当前不建议立即分期购买，建议先等待 48 小时并重新评估预算"
+        if intent in {"delay", "reduce_budget", "review"}:
+            headline = "当前更适合暂缓或降低预算，并把本次判断加入复盘"
+
+        review_at = datetime.now(CN_TZ) + timedelta(days=7)
+        valid_until = review_at + timedelta(days=7)
+        reasons = [
+            ReasonPoint(
+                text=(
+                    f"本次决策对象为“{item_name}”，价格约 {item_price:.0f} 元，"
+                    f"约为月生活费的 {price_ratio:.1f} 倍。"
+                ),
+                tag=OutputMarkType.DATA_FACT,
+            ),
+            ReasonPoint(
+                text=(
+                    f"月生活费 {monthly_allowance:.0f} 元，本月已消费 {spent_this_month:.0f} 元，"
+                    f"当前可用余额约 {remaining:.0f} 元。"
+                ),
+                tag=OutputMarkType.DATA_FACT,
+            ),
+            ReasonPoint(
+                text=(
+                    f"计划分 {installment_months} 期，每期未含手续费约 {monthly_payment:.0f} 元；"
+                    f"触发原因是“{trigger}”，情绪评分 {emotion_level}/5。"
+                ),
+                tag=OutputMarkType.DATA_FACT,
+            ),
+            ReasonPoint(
+                text=f"系统识别到的行为风险包括：{'、'.join(risks)}。这些风险会让分期降低支付痛感，放大后续还款压力。",
+                tag=OutputMarkType.MODEL_INFERENCE,
+            ),
+        ]
+
+        decision_card = DecisionCard(
+            headline_judgement=headline,
+            key_reason_summary=reasons,
+            user_fit_summary=UserFitSummary(
+                fit="适合希望先看清预算边界、真实需求和分期成本的学生。",
+                unfit="不适合希望系统直接鼓励购买、借贷或追求即时满足的人。",
+            ),
+            next_step_actions=[
+                "等待 48 小时后再重新判断是否仍然想买。",
+                "对比 3000 元以内替代方案，确认核心需求是否已经满足。",
+                "计算不分期时是否仍愿意购买，并补充手续费、逾期成本和提前还款规则。",
+                "若最终仍购买，至少保留一个月生活费安全垫。",
+                "将本次行为标签写入月底财务复盘：冲动消费、盲目跟风、预算透支、分期依赖。",
+            ],
+            primary_risks=(
+                "本次主要风险不是手机本身，而是大额分期在低余额、强情绪和同伴影响下放大预算压力。"
+                "如果后续生活费波动或出现额外支出，还款压力会进一步上升。"
+            ),
+            review_at=review_at,
+            valid_until=valid_until,
+            data_as_of=datetime.now(CN_TZ),
+            stock_snapshot=detail.quote_snapshot,
+            company_profile=detail.company_profile,
+            recent_events=[],
+            data_sources=["校园消费场景输入", "学生财务画像", "AI 行为干预规则", "PCG 腾讯财经风险教育接入位"],
+            supporting_evidence=[
+                f"[支撑] 商品价格约为月生活费的 {price_ratio:.1f} 倍，已经超出普通月度弹性支出范围。",
+                f"[支撑] 本月可用余额约 {remaining:.0f} 元，低于本次消费总价。",
+                f"[支撑] 触发原因包含“{trigger}”，存在同伴影响或促销压力。",
+            ],
+            counter_evidence=[
+                "如果旧手机已经明显影响学习、实习或安全使用，购买可能有合理性。",
+                "如果用户有稳定兼职收入、已预留生活费安全垫，分期压力会下降。",
+                "如果选择更低预算替代方案，核心需求可能仍能被满足。",
+            ],
+            invalidation_conditions=[
+                f"7 天后仍无法说明这笔消费的真实必要性（{valid_until.strftime('%Y-%m-%d')} 前复盘）。",
+                "无法算清手续费、逾期成本、提前还款规则或每月还款来源。",
+                "购买后会导致本月生活费、餐饮交通或学习必要支出不足。",
+            ],
+            confidence_level="medium",
+        )
+
+        return AnalysisResult(
+            status="ready",
+            analysis_template_version=ANALYSIS_TEMPLATE_VERSION,
+            analysis_policy_version=ANALYSIS_POLICY_VERSION,
+            degrade_flags=[],
+            intervention=intervention,
+            decision_card=decision_card,
+            fit_summary="这是一张校园消费决策自检卡，重点是让学生看清预算边界、情绪触发和分期真实成本。",
+            market_context=MarketContext(
+                market_event="当前场景来自校园大额消费与分期决策，重点是识别预算边界、同伴影响和分期成本。",
+                impact_boundary="结论只服务于本次消费自检，应在 7 天内结合真实余额和需求变化复盘。",
+                mark_type=OutputMarkType.MODEL_INFERENCE,
+            ),
+            explanation_layer=ExplanationLayer(
+                plain_text=(
+                    "分期会降低当下付款的痛感，但不会降低总价。"
+                    "当价格已经超过月生活费多倍、触发原因又来自同伴影响时，最稳妥的第一步是暂缓。"
+                ),
+                case_example=(
+                    "就像月底前先看饭卡余额再约聚餐，不是不能消费，而是要先确认消费不会挤压基本生活。"
                 ),
             ),
         )

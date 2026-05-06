@@ -17,9 +17,9 @@ def test_mock_market_detail_does_not_call_external_http(monkeypatch):
 
     service = MarketDataService()
     try:
-        detail = service.get_stock_detail("SH600519")
-        assert detail.stock_id == "SH600519"
-        assert detail.stock_name == "贵州茅台"
+        detail = service.get_stock_detail("SZ000200")
+        assert detail.stock_id == "SZ000200"
+        assert detail.stock_name == "5999元手机分期"
         assert detail.quote_snapshot is not None
         assert detail.quote_snapshot.data_as_of == datetime(2026, 4, 30, 15, 0, tzinfo=detail.quote_snapshot.data_as_of.tzinfo)
         assert len(detail.recent_history) == 30
@@ -34,8 +34,8 @@ def test_mock_market_search_is_deterministic(monkeypatch):
 
     service = MarketDataService()
     try:
-        results = service.search_stocks("600519")
-        assert [item.stock_id for item in results] == ["SH600519"]
+        results = service.search_stocks("手机分期")
+        assert [item.stock_id for item in results] == ["SZ000200"]
         assert results[0].matched_by == "mock"
     finally:
         service.close()
@@ -63,8 +63,8 @@ def test_real_market_detail_degrades_when_external_http_fails(monkeypatch):
 
     service = MarketDataService()
     try:
-        detail = service.get_stock_detail("SH600519")
-        assert detail.stock_id == "SH600519"
+        detail = service.get_stock_detail("SZ000200")
+        assert detail.stock_id == "SZ000200"
         assert detail.quote_snapshot is None
         assert detail.recent_history == []
         assert detail.recent_events == []

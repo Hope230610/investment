@@ -52,7 +52,7 @@ export default function WatchlistPage() {
 
       <div className="space-y-2">
         <h2 className="text-2xl font-bold tracking-tight">观察列表</h2>
-        <p className="text-sm text-stone-400">跟踪值得持续关注的股票。</p>
+        <p className="text-sm text-stone-400">跟踪预算目标、金融产品风险和需要复盘的事项。</p>
       </div>
 
       <Link
@@ -60,7 +60,7 @@ export default function WatchlistPage() {
         className="w-full py-4 bg-white border border-stone-200 rounded-2xl flex items-center justify-center gap-2 font-semibold text-stone-700 hover:bg-stone-50 active:scale-[0.98] transition-all"
       >
         <Search size={20} />
-        添加股票到观察列表
+        添加财务观察事项
       </Link>
 
       {watchlist.length > 0 ? (
@@ -115,7 +115,7 @@ export default function WatchlistPage() {
           </div>
           <div className="text-center space-y-1">
             <p className="font-bold text-lg">观察列表为空</p>
-            <p className="text-xs text-stone-400">把值得继续跟踪的股票放进来，后面会更方便复查和分析。</p>
+            <p className="text-xs text-stone-400">把需要继续观察的预算目标或风险事项放进来，后面会更方便复查和分析。</p>
           </div>
         </div>
       )}
@@ -123,7 +123,7 @@ export default function WatchlistPage() {
       <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 flex gap-3 items-start">
         <AlertCircle className="text-amber-500 shrink-0 mt-0.5" size={18} />
         <p className="text-xs text-amber-800 leading-relaxed">
-          观察列表只是你的跟踪工具，不是仓位建议。请继续结合资金计划和风险承受能力使用。
+          观察列表只是你的跟踪工具，不是购买推荐或借贷安排。请继续结合生活费计划和风险承受能力使用。
         </p>
       </div>
     </div>

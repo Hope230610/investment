@@ -7,7 +7,7 @@ import type { StockSearchItem } from '../types';
 import { getWatchlistItems, postWatchlistItem } from '../api';
 
 
-const hotSearches = ['贵州茅台', '宁德时代', '平安银行', '招商银行'];
+const hotSearches = ['5999元手机分期', '3000元替代手机', '校园贷风险', '月底超支复盘'];
 
 
 export default function StockSearchPage() {
@@ -114,7 +114,7 @@ export default function StockSearchPage() {
           <input
             autoFocus
             type="text"
-            placeholder="搜索股票名称、代码或拼音"
+            placeholder="搜索演示对象、消费场景或风险主题"
             className="w-full bg-stone-100 border-none rounded-xl py-3 pl-10 pr-10 text-sm focus:ring-2 focus:ring-ink"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
@@ -132,7 +132,7 @@ export default function StockSearchPage() {
 
       <div className="flex-1 overflow-y-auto">
         {loading ? (
-          <div className="p-8 text-center text-stone-400 text-sm">正在搜索实时股票数据...</div>
+          <div className="p-8 text-center text-stone-400 text-sm">正在搜索演示数据...</div>
         ) : error ? (
           <div className="p-8 text-center text-red-600 text-sm">{error}</div>
         ) : results.length > 0 ? (
@@ -185,7 +185,7 @@ export default function StockSearchPage() {
           </div>
         ) : query ? (
           <div className="p-12 text-center text-stone-400">
-            <p className="text-sm">没有找到相关股票，请换个关键词试试</p>
+            <p className="text-sm">没有找到相关对象，请换个关键词试试</p>
           </div>
         ) : (
           <div className="p-8 space-y-4">

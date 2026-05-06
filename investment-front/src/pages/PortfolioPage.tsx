@@ -64,7 +64,7 @@ export default function PortfolioPage() {
       setOverview(portfolioData);
       setTransactions(txData);
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : '组合数据加载失败');
+      setError(loadError instanceof Error ? loadError.message : '预算数据加载失败');
     } finally {
       setLoading(false);
     }
@@ -119,15 +119,15 @@ export default function PortfolioPage() {
       note: holdingForm.note.trim() || null,
     };
     if (!payload.stock_id || !payload.quantity || !payload.cost_price || !payload.current_price) {
-      showToast('请补全持仓信息');
+      showToast('请补全预算目标信息');
       return;
     }
     if (editing) {
       await putHolding(editing.id, payload);
-      showToast('持仓已更新');
+      showToast('预算目标已更新');
     } else {
       await postHolding(payload);
-      showToast('持仓已保存');
+      showToast('预算目标已保存');
     }
     setEditing(null);
     setHoldingForm(emptyHolding);
@@ -145,23 +145,23 @@ export default function PortfolioPage() {
       reason: txForm.reason.trim() || null,
     };
     if (!payload.stock_id || !payload.price || !payload.quantity) {
-      showToast('请补全交易记录');
+      showToast('请补全变动记录');
       return;
     }
     await postTransaction(payload);
     setTxForm(emptyTransaction);
-    showToast('交易记录已保存');
+    showToast('变动记录已保存');
     await load();
   };
 
   const removeHolding = async (id: string) => {
     await deleteHolding(id);
-    showToast('持仓已删除');
+    showToast('预算目标已删除');
     await load();
   };
 
   if (loading && !overview) {
-    return <div className="p-8 text-center text-stone-400">正在加载组合...</div>;
+    return <div className="p-8 text-center text-stone-400">正在加载预算目标...</div>;
   }
 
   if (error && !overview) {
@@ -169,7 +169,7 @@ export default function PortfolioPage() {
       <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 p-8 text-center">
         <AlertTriangle size={34} className="text-amber-500" />
         <div>
-          <h2 className="text-lg font-bold">组合数据暂时不可用</h2>
+          <h2 className="text-lg font-bold">预算数据暂时不可用</h2>
           <p className="mt-2 text-sm leading-relaxed text-stone-500">{error}</p>
         </div>
         <button onClick={() => load()} className="rounded-xl bg-ink px-5 py-3 text-sm font-bold text-white">
@@ -191,8 +191,8 @@ export default function PortfolioPage() {
       <section className="space-y-3">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-2xl font-bold tracking-tight">持仓组合</h2>
-            <p className="text-sm text-stone-400">手动维护真实投资状态，用于辅助分析和复盘。</p>
+            <h2 className="text-2xl font-bold tracking-tight">预算目标</h2>
+            <p className="text-sm text-stone-400">手动维护预算目标、计划金额和复盘边界，用于辅助判断。</p>
           </div>
           <button onClick={() => load()} className="rounded-xl border border-stone-200 bg-white p-3 text-stone-500">
             <RefreshCw size={18} />
@@ -201,14 +201,14 @@ export default function PortfolioPage() {
 
         <div className="rounded-2xl border border-stone-100 bg-white p-4">
           <div className="grid grid-cols-2 gap-3">
-            <Metric label="总市值估算" value={money(summary?.total_market_value ?? 0)} />
+            <Metric label="计划金额估算" value={money(summary?.total_market_value ?? 0)} />
             <Metric
-              label="浮动盈亏"
+              label="预算偏差"
               value={money(summary?.total_unrealized_pnl ?? 0)}
               tone={(summary?.total_unrealized_pnl ?? 0) >= 0 ? 'up' : 'down'}
             />
-            <Metric label="持仓数" value={String(summary?.holding_count ?? 0)} />
-            <Metric label="最大单票占比" value={percent(summary?.max_position_weight ?? 0)} />
+            <Metric label="目标数" value={String(summary?.holding_count ?? 0)} />
+            <Metric label="最大目标占比" value={percent(summary?.max_position_weight ?? 0)} />
           </div>
           {summary?.concentration_alert && (
             <div className="mt-4 flex gap-2 rounded-xl border border-amber-100 bg-amber-50 p-3 text-xs leading-relaxed text-amber-800">
@@ -217,20 +217,20 @@ export default function PortfolioPage() {
             </div>
           )}
           <div className="mt-3 text-[10px] text-stone-400">
-            更新时间：{summary?.data_updated_at ? new Date(summary.data_updated_at).toLocaleString() : '暂无数据'}；当前价依赖手动维护，可能不是实时价格。
+            更新时间：{summary?.data_updated_at ? new Date(summary.data_updated_at).toLocaleString() : '暂无数据'}；当前金额依赖手动维护，可能不是实时价格。
           </div>
         </div>
       </section>
 
       <section className="space-y-3">
         <h3 className="text-sm font-bold uppercase tracking-widest text-stone-400">
-          {editing ? '编辑持仓' : '新增持仓'}
+          {editing ? '编辑预算目标' : '新增预算目标'}
         </h3>
         <div className="rounded-2xl border border-stone-100 bg-white p-4 space-y-3">
           <div className="grid grid-cols-2 gap-2">
-            <Input label="股票代码" value={holdingForm.stock_id} onChange={(value) => setHoldingForm((p) => ({ ...p, stock_id: value }))} />
-            <Input label="股票名称" value={holdingForm.stock_name} onChange={(value) => setHoldingForm((p) => ({ ...p, stock_name: value }))} />
-            <Input label="市场" value={holdingForm.market} onChange={(value) => setHoldingForm((p) => ({ ...p, market: value }))} />
+            <Input label="对象代码" value={holdingForm.stock_id} onChange={(value) => setHoldingForm((p) => ({ ...p, stock_id: value }))} />
+            <Input label="对象名称" value={holdingForm.stock_name} onChange={(value) => setHoldingForm((p) => ({ ...p, stock_name: value }))} />
+            <Input label="分类" value={holdingForm.market} onChange={(value) => setHoldingForm((p) => ({ ...p, market: value }))} />
             <Input label="数量" type="number" value={holdingForm.quantity} onChange={(value) => setHoldingForm((p) => ({ ...p, quantity: value }))} />
             <Input label="成本价" type="number" value={holdingForm.cost_price} onChange={(value) => setHoldingForm((p) => ({ ...p, cost_price: value }))} />
             <Input label="当前价" type="number" value={holdingForm.current_price} onChange={(value) => setHoldingForm((p) => ({ ...p, current_price: value }))} />
@@ -238,7 +238,7 @@ export default function PortfolioPage() {
           <textarea
             value={holdingForm.note}
             onChange={(event) => setHoldingForm((p) => ({ ...p, note: event.target.value }))}
-            placeholder="持仓理由或仓位边界"
+            placeholder="预算目标理由或金额边界"
             className="min-h-20 w-full rounded-xl border border-stone-200 bg-stone-50 px-3 py-2 text-sm outline-none focus:border-ink"
           />
           <div className="flex gap-2">
@@ -249,7 +249,7 @@ export default function PortfolioPage() {
             )}
             <button onClick={saveHolding} className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-ink py-3 text-sm font-bold text-white">
               <Plus size={16} />
-              保存持仓
+              保存预算目标
             </button>
           </div>
         </div>
@@ -257,7 +257,7 @@ export default function PortfolioPage() {
 
       <section className="space-y-3">
         <div className="flex items-center justify-between px-1">
-          <h3 className="text-sm font-bold uppercase tracking-widest text-stone-400">持仓明细</h3>
+          <h3 className="text-sm font-bold uppercase tracking-widest text-stone-400">预算目标明细</h3>
           {topHolding && <span className="text-[10px] text-stone-400">按更新时间排序</span>}
         </div>
         {holdings.length === 0 ? (
@@ -282,19 +282,19 @@ export default function PortfolioPage() {
       </section>
 
       <section className="space-y-3">
-        <h3 className="text-sm font-bold uppercase tracking-widest text-stone-400">新增交易流水</h3>
+        <h3 className="text-sm font-bold uppercase tracking-widest text-stone-400">新增预算变动记录</h3>
         <div className="rounded-2xl border border-stone-100 bg-white p-4 space-y-3">
           <div className="grid grid-cols-2 gap-2">
-            <Input label="股票代码" value={txForm.stock_id} onChange={(value) => setTxForm((p) => ({ ...p, stock_id: value }))} />
-            <Input label="股票名称" value={txForm.stock_name} onChange={(value) => setTxForm((p) => ({ ...p, stock_name: value }))} />
-            <Input label="市场" value={txForm.market} onChange={(value) => setTxForm((p) => ({ ...p, market: value }))} />
+            <Input label="对象代码" value={txForm.stock_id} onChange={(value) => setTxForm((p) => ({ ...p, stock_id: value }))} />
+            <Input label="对象名称" value={txForm.stock_name} onChange={(value) => setTxForm((p) => ({ ...p, stock_name: value }))} />
+            <Input label="分类" value={txForm.market} onChange={(value) => setTxForm((p) => ({ ...p, market: value }))} />
             <select
               value={txForm.side}
               onChange={(event) => setTxForm((p) => ({ ...p, side: event.target.value as TransactionSide }))}
               className="rounded-xl border border-stone-200 bg-stone-50 px-3 py-2 text-sm outline-none focus:border-ink"
             >
-              <option value="buy">买入</option>
-              <option value="sell">卖出</option>
+              <option value="buy">增加</option>
+              <option value="sell">减少</option>
             </select>
             <Input label="价格" type="number" value={txForm.price} onChange={(value) => setTxForm((p) => ({ ...p, price: value }))} />
             <Input label="数量" type="number" value={txForm.quantity} onChange={(value) => setTxForm((p) => ({ ...p, quantity: value }))} />
@@ -302,18 +302,18 @@ export default function PortfolioPage() {
           <textarea
             value={txForm.reason}
             onChange={(event) => setTxForm((p) => ({ ...p, reason: event.target.value }))}
-            placeholder="交易理由，或当时的自检结论"
+            placeholder="变动理由，或当时的自检结论"
             className="min-h-20 w-full rounded-xl border border-stone-200 bg-stone-50 px-3 py-2 text-sm outline-none focus:border-ink"
           />
           <button onClick={saveTransaction} className="flex w-full items-center justify-center gap-2 rounded-xl bg-ink py-3 text-sm font-bold text-white">
             <FilePlus2 size={16} />
-            保存交易记录
+            保存变动记录
           </button>
         </div>
       </section>
 
       <section className="space-y-3">
-        <h3 className="text-sm font-bold uppercase tracking-widest text-stone-400">最近交易</h3>
+        <h3 className="text-sm font-bold uppercase tracking-widest text-stone-400">最近变动</h3>
         <div className="space-y-2">
           {transactions.slice(0, 8).map((item) => (
             <div key={item.id} className="rounded-xl border border-stone-100 bg-white p-3">
@@ -324,7 +324,7 @@ export default function PortfolioPage() {
                 </div>
                 <div className="text-right">
                   <div className={cn('text-sm font-bold', item.side === 'buy' ? 'text-red-600' : 'text-emerald-600')}>
-                    {item.side === 'buy' ? '买入' : '卖出'} {item.quantity}
+                    {item.side === 'buy' ? '增加' : '减少'} {item.quantity}
                   </div>
                   <div className="text-[10px] text-stone-400">{money(item.amount)}</div>
                 </div>
@@ -332,13 +332,13 @@ export default function PortfolioPage() {
               {item.reason && <p className="mt-2 line-clamp-2 text-xs text-stone-500">{item.reason}</p>}
             </div>
           ))}
-          {transactions.length === 0 && <div className="rounded-xl bg-stone-50 p-4 text-center text-xs text-stone-400">暂无交易流水</div>}
+          {transactions.length === 0 && <div className="rounded-xl bg-stone-50 p-4 text-center text-xs text-stone-400">暂无预算变动记录</div>}
         </div>
       </section>
 
       <div className="flex gap-3 rounded-xl border border-amber-100 bg-amber-50 p-3 text-xs leading-relaxed text-amber-800">
         <AlertTriangle size={16} className="mt-0.5 shrink-0" />
-        <p>持仓和交易流水用于辅助判断，不代表系统给出买卖指令，也不会接入券商或自动交易。</p>
+        <p>预算目标和变动记录用于辅助判断，不代表系统替你做消费或资金安排，也不会连接任何执行渠道。</p>
       </div>
     </div>
   );
@@ -401,8 +401,8 @@ function HoldingCard({ item, onEdit, onDelete, onAnalysis, onReview, onBuy, onSe
         <IconButton title="删除" onClick={onDelete} icon={Trash2} danger />
         <IconButton title="分析" onClick={onAnalysis} icon={BarChart3} />
         <IconButton title="复盘" onClick={onReview} icon={ShieldAlert} />
-        <button onClick={onBuy} className="rounded-xl bg-red-50 py-2 text-xs font-bold text-red-600">买</button>
-        <button onClick={onSell} className="rounded-xl bg-emerald-50 py-2 text-xs font-bold text-emerald-600">卖</button>
+        <button onClick={onBuy} className="rounded-xl bg-red-50 py-2 text-xs font-bold text-red-600">增</button>
+        <button onClick={onSell} className="rounded-xl bg-emerald-50 py-2 text-xs font-bold text-emerald-600">减</button>
       </div>
     </div>
   );
@@ -433,10 +433,10 @@ function EmptyState() {
   return (
     <div className="flex min-h-48 flex-col items-center justify-center rounded-2xl border border-dashed border-stone-200 bg-white p-8 text-center">
       <BarChart3 size={36} className="text-stone-300" />
-      <p className="mt-3 text-sm font-bold text-stone-600">还没有持仓记录</p>
-      <p className="mt-1 text-xs text-stone-400">先录入一条持仓，分析和自检会开始理解你的真实仓位。</p>
+      <p className="mt-3 text-sm font-bold text-stone-600">还没有预算目标</p>
+      <p className="mt-1 text-xs text-stone-400">先录入一条预算目标，分析和自检会开始理解你的金额边界。</p>
       <Link to="/stock/search?callback=/portfolio" className="mt-4 rounded-xl bg-ink px-4 py-2 text-xs font-bold text-white">
-        搜索标的
+        搜索对象
       </Link>
     </div>
   );

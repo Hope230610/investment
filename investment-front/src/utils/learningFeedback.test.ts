@@ -4,7 +4,7 @@
  * Coverage:
  * - Judgment quality scoring
  * - Hard-to-tell case (不计入历史，但展示中性卡面)
- * - Tag inference (追涨倾向 / 恐慌卖出 / user-confirmed patterns)
+ * - Tag inference (盲目跟风 / 过度焦虑 / user-confirmed patterns)
  * - Emotion history fallback vs real API data
  * - Delta calculation (no delta on first entry)
  * - Trend direction (up / down / stable / insufficient)
@@ -22,10 +22,10 @@ import {
 
 function makeForm(overrides: Partial<ReviewFormData> = {}): ReviewFormData {
   return {
-    actionTaken: 'continued',
-    outcomeSummary: '赚了5%',
+    actionTaken: '暂缓购买 5999 元手机，先比较 3000 元以内替代方案',
+    outcomeSummary: '月底预算没有透支，并保留了一个月生活费安全垫',
     planDeviation: false,
-    judgementQuality: '主要来自判断',
+    judgementQuality: '主要来自理性判断',
     behaviorPatterns: [],
     emotionLevel: 2,
     ...overrides,
@@ -36,25 +36,30 @@ function makeForm(overrides: Partial<ReviewFormData> = {}): ReviewFormData {
 // ─── Judgment quality scoring ─────────────────────────────────────────────────
 
 describe('Judgment quality scoring', () => {
-  it('maps 主要来自判断 to 100%', () => {
-    const result = computeLearningFeedback(makeForm({ judgementQuality: '主要来自判断' }), null, []);
+  it('maps 主要来自理性判断 to 100%', () => {
+    const result = computeLearningFeedback(makeForm({ judgementQuality: '主要来自理性判断' }), null, []);
     expect(result).not.toBeNull();
     expect(result!.judgmentQualityPercent).toBe(100);
     expect(result!.judgmentLevel).toBe('high');
   });
 
-  it('maps 部分判断 + 部分运气 to 50% (level = low, since 50 < 60 threshold)', () => {
-    const result = computeLearningFeedback(makeForm({ judgementQuality: '部分判断 + 部分运气' }), null, []);
+  it('maps 部分判断 + 部分情绪 to 50% (level = low, since 50 < 60 threshold)', () => {
+    const result = computeLearningFeedback(makeForm({ judgementQuality: '部分判断 + 部分情绪' }), null, []);
     expect(result).not.toBeNull();
     expect(result!.judgmentQualityPercent).toBe(50);
     expect(result!.judgmentLevel).toBe('low');
   });
 
-  it('maps 主要来自运气 to 0%', () => {
-    const result = computeLearningFeedback(makeForm({ judgementQuality: '主要来自运气' }), null, []);
+  it('maps 主要来自情绪冲动 to 0%', () => {
+    const result = computeLearningFeedback(makeForm({ judgementQuality: '主要来自情绪冲动' }), null, []);
     expect(result).not.toBeNull();
     expect(result!.judgmentQualityPercent).toBe(0);
     expect(result!.judgmentLevel).toBe('low');
+  });
+
+  it('keeps legacy investment labels backward-compatible', () => {
+    const result = computeLearningFeedback(makeForm({ judgementQuality: '主要来自判断' }), null, []);
+    expect(result!.judgmentQualityPercent).toBe(100);
   });
 });
 
@@ -110,7 +115,7 @@ describe('History aggregation', () => {
   it('averages across existing history', () => {
     // [80, 80] + 0 → (80+80+0)/3 ≈ 53
     const result = computeLearningFeedback(
-      makeForm({ judgementQuality: '主要来自运气' }),
+      makeForm({ judgementQuality: '主要来自情绪冲动' }),
       null,
       [80, 80],
     );
@@ -131,7 +136,7 @@ describe('History aggregation', () => {
     // existing avg: (100+100)/2=100, new score: 50
     // new avg: (100+100+50)/3≈83, delta: 83-100=-17
     const result = computeLearningFeedback(
-      makeForm({ judgementQuality: '部分判断 + 部分运气' }),
+      makeForm({ judgementQuality: '部分判断 + 部分情绪' }),
       null,
       [100, 100],
     );
@@ -143,87 +148,87 @@ describe('History aggregation', () => {
 // ─── Tag inference ───────────────────────────────────────────────────────────
 
 describe('Tag inference', () => {
-  it('infers 追涨倾向 when buy intent + 连续上涨 trigger', () => {
-    const result = computeLearningFeedback(makeForm(), { intent: 'buy', trigger_reason: '连续上涨' }, [50]);
+  it('infers 盲目跟风 when purchase intent + 同学都换新机 trigger', () => {
+    const result = computeLearningFeedback(makeForm(), { intent: 'purchase', trigger_reason: '同学都换新机' }, [50]);
     expect(result!.tagUpdates).toContainEqual(
-      expect.objectContaining({ tag: '追涨倾向', type: 'add' }),
+      expect.objectContaining({ tag: '盲目跟风', type: 'add' }),
     );
   });
 
-  it('infers 追涨倾向 when add_position + 看到大涨', () => {
-    const result = computeLearningFeedback(makeForm(), { intent: 'add_position', trigger_reason: '看到大涨' }, [50]);
+  it('infers 盲目跟风 when buy intent + 限时优惠 trigger', () => {
+    const result = computeLearningFeedback(makeForm(), { intent: 'buy', trigger_reason: '限时优惠' }, [50]);
     expect(result!.tagUpdates).toContainEqual(
-      expect.objectContaining({ tag: '追涨倾向', type: 'add' }),
+      expect.objectContaining({ tag: '盲目跟风', type: 'add' }),
     );
   });
 
-  it('infers 恐慌卖出 when sell intent + 快速下跌', () => {
-    const result = computeLearningFeedback(makeForm(), { intent: 'sell', trigger_reason: '快速下跌' }, [50]);
+  it('infers 过度焦虑 when delay intent + 旧设备损坏', () => {
+    const result = computeLearningFeedback(makeForm(), { intent: 'delay', trigger_reason: '旧设备损坏' }, [50]);
     expect(result!.tagUpdates).toContainEqual(
-      expect.objectContaining({ tag: '恐慌卖出', type: 'add' }),
+      expect.objectContaining({ tag: '过度焦虑', type: 'add' }),
     );
   });
 
-  it('infers 恐慌卖出 when reduce_position + 恐慌性抛盘', () => {
-    const result = computeLearningFeedback(makeForm(), { intent: 'reduce_position', trigger_reason: '恐慌性抛盘' }, [50]);
+  it('infers 过度焦虑 when reduce_budget + 旧设备损坏', () => {
+    const result = computeLearningFeedback(makeForm(), { intent: 'reduce_budget', trigger_reason: '旧设备损坏' }, [50]);
     expect(result!.tagUpdates).toContainEqual(
-      expect.objectContaining({ tag: '恐慌卖出', type: 'add' }),
+      expect.objectContaining({ tag: '过度焦虑', type: 'add' }),
     );
   });
 
   // ─── action_taken 回退（Fix 4c）────────────────────────────────────────────────
 
-  it('infers 追涨倾向 when only action_taken=buy (no intent field)', () => {
+  it('infers 盲目跟风 when only action_taken=buy with peer pressure (no intent field)', () => {
     const result = computeLearningFeedback(
       makeForm(),
-      { action_taken: 'buy', trigger_reason: '连续上涨' },
+      { action_taken: 'buy', trigger_reason: '同学都换新机' },
       [50],
     );
     expect(result!.tagUpdates).toContainEqual(
-      expect.objectContaining({ tag: '追涨倾向', type: 'add' }),
+      expect.objectContaining({ tag: '盲目跟风', type: 'add' }),
     );
   });
 
-  it('infers 恐慌卖出 when only action_taken=sell (no intent field)', () => {
+  it('infers 过度焦虑 when only action_taken=delay with urgent replacement pressure (no intent field)', () => {
     const result = computeLearningFeedback(
       makeForm(),
-      { action_taken: 'sell', trigger_reason: '快速下跌' },
+      { action_taken: 'delay', trigger_reason: '旧设备损坏' },
       [50],
     );
     expect(result!.tagUpdates).toContainEqual(
-      expect.objectContaining({ tag: '恐慌卖出', type: 'add' }),
+      expect.objectContaining({ tag: '过度焦虑', type: 'add' }),
     );
   });
 
-  it('infers 追涨倾向 when action_taken=add (no intent field)', () => {
+  it('infers 盲目跟风 when action_taken=purchase (no intent field)', () => {
     const result = computeLearningFeedback(
       makeForm(),
-      { action_taken: 'add', trigger_reason: '看到大涨' },
+      { action_taken: 'purchase', trigger_reason: '博主种草' },
       [50],
     );
     expect(result!.tagUpdates).toContainEqual(
-      expect.objectContaining({ tag: '追涨倾向', type: 'add' }),
+      expect.objectContaining({ tag: '盲目跟风', type: 'add' }),
     );
   });
 
-  it('infers 恐慌卖出 when action_taken=reduce (no intent field)', () => {
+  it('infers 过度焦虑 when action_taken=reduce_budget (no intent field)', () => {
     const result = computeLearningFeedback(
       makeForm(),
-      { action_taken: 'reduce', trigger_reason: '恐慌性抛盘' },
+      { action_taken: 'reduce_budget', trigger_reason: '旧设备损坏' },
       [50],
     );
     expect(result!.tagUpdates).toContainEqual(
-      expect.objectContaining({ tag: '恐慌卖出', type: 'add' }),
+      expect.objectContaining({ tag: '过度焦虑', type: 'add' }),
     );
   });
 
   it('intent takes priority over action_taken when both present', () => {
     const result = computeLearningFeedback(
       makeForm(),
-      { intent: 'buy', action_taken: 'sell', trigger_reason: '连续上涨' },
+      { intent: 'purchase', action_taken: 'delay', trigger_reason: '同学都换新机' },
       [50],
     );
-    expect(result!.tagUpdates.map(u => u.tag)).toContain('追涨倾向');
+    expect(result!.tagUpdates.map(u => u.tag)).toContain('盲目跟风');
   });
 
   it('returns no tags when neither intent nor action_taken matches trigger', () => {
@@ -237,22 +242,22 @@ describe('Tag inference', () => {
 
   it('adds user-confirmed patterns from behaviorPatterns array', () => {
     const result = computeLearningFeedback(
-      makeForm({ behaviorPatterns: ['追涨倾向', '频繁交易'] }),
+      makeForm({ behaviorPatterns: ['盲目跟风', '分期依赖'] }),
       null,
       [50],
     );
     const tags = result!.tagUpdates.map(u => u.tag);
-    expect(tags).toContain('追涨倾向');
-    expect(tags).toContain('频繁交易');
+    expect(tags).toContain('盲目跟风');
+    expect(tags).toContain('分期依赖');
   });
 
   it('does not duplicate tags already inferred from payload', () => {
     const result = computeLearningFeedback(
-      makeForm({ behaviorPatterns: ['追涨倾向'] }),
-      { intent: 'buy', trigger_reason: '连续上涨' },
+      makeForm({ behaviorPatterns: ['盲目跟风'] }),
+      { intent: 'purchase', trigger_reason: '同学都换新机' },
       [50],
     );
-    const count = result!.tagUpdates.filter(u => u.tag === '追涨倾向').length;
+    const count = result!.tagUpdates.filter(u => u.tag === '盲目跟风').length;
     expect(count).toBe(1);
   });
 
@@ -356,7 +361,7 @@ describe('Suggestion text', () => {
   it('low level: reduce frequency message', () => {
     // [20, 20] + 100 → avg ≈ 47 → low
     const result = computeLearningFeedback(makeForm({ judgementQuality: '主要来自判断' }), null, [20, 20]);
-    expect(result!.suggestion).toContain('降低交易频率');
+    expect(result!.suggestion).toContain('降低大额消费频率');
   });
 });
 

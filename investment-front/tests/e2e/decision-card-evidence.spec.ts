@@ -1,5 +1,5 @@
 /**
- * E2E tests for Decision Card evidence fields (P0 spec requirement).
+ * E2E tests for campus coach Decision Card evidence fields.
  *
  * Run:
  *   npx playwright test tests/e2e/decision-card-evidence.spec.ts
@@ -17,8 +17,8 @@
 import { test, expect } from '@playwright/test';
 import { BASE_URL, getAnalysisIdFromResultUrl, loginAs, pollAnalysisResult } from './helpers';
 
-const STOCK_ID   = 'SH600519';
-const STOCK_NAME = '贵州茅台';
+const STOCK_ID   = 'SZ000200';
+const STOCK_NAME = '5999元手机分期';
 
 interface DecisionCardV2 {
   headline_judgement: string;
@@ -163,21 +163,22 @@ test('confidence_level is valid across analysis scenarios', async ({ page }) => 
 
     if (path.includes('post-trade')) {
       await page.goto(`${BASE_URL}/analysis/post-trade?stock_id=${STOCK_ID}&stock_name=${encodeURIComponent(STOCK_NAME)}`);
-      await page.locator('input[placeholder*="买入"]').fill('E2E confidence test');
-      await page.locator('textarea[placeholder*="价格变化"]').fill('E2E confidence test outcome');
+      await page.locator('input[placeholder*="暂缓购买"]').fill('E2E campus confidence test');
+      await page.locator('textarea[placeholder*="本月余额变化"]').fill('E2E 校园预算 confidence test outcome');
+      await page.getByRole('button', { name: /主要来自理性判断/i }).click();
       await page.getByRole('button', { name: /提交复盘/i }).click();
     } else if (path.includes('pre-trade')) {
       await page.goto(`${BASE_URL}${path}?stock_id=${STOCK_ID}&stock_name=${encodeURIComponent(STOCK_NAME)}`);
-      await page.getByRole('button', { name: /^买入$/i }).click();
-      await page.getByRole('button', { name: /^连续上涨$/i }).click();
+      await page.getByRole('button', { name: /购买\s*\/\s*分期/i }).click();
+      await page.getByRole('button', { name: /^同学都换新机$/i }).click();
       await page.locator('input[type="range"]').fill('4');
-      await page.getByRole('button', { name: /开始自检/i }).click();
+      await page.getByRole('button', { name: /进入消费冷静期/i }).click();
       const yesButtons = page.locator('button', { hasText: '是' });
       const count = await yesButtons.count();
       for (let i = 0; i < count; i++) {
         await yesButtons.nth(i).click();
       }
-      await page.getByRole('button', { name: /完成自检并生成分析/i }).click();
+      await page.getByRole('button', { name: /完成自检并生成决策卡/i }).click();
     } else {
       await page.goto(`${BASE_URL}${path}?stock_id=${STOCK_ID}&stock_name=${encodeURIComponent(STOCK_NAME)}`);
       await page.getByRole('button', { name: /开始结构化分析/i }).click();

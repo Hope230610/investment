@@ -65,6 +65,13 @@ function formatMaybeNumber(value: unknown, fractionDigits = 2) {
   return numberValue === null ? '--' : numberValue.toFixed(fractionDigits);
 }
 
+function payloadNumber(payload: Record<string, unknown> | null | undefined, key: string) {
+  const value = payload?.[key];
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim() && Number.isFinite(Number(value))) return Number(value);
+  return null;
+}
+
 export function normalizeHoldingContext(value: unknown) {
   if (!isRecord(value)) return null;
   const weight = toFiniteNumber(value.weight);
@@ -98,7 +105,7 @@ function formatLargeNumber(value?: number | null) {
 
 
 function formatDegradeFlag(flag: string) {
-  if (flag === 'missing_market_data') return '行情数据暂时不完整';
+  if (flag === 'missing_market_data') return '场景数据暂时不完整';
   if (flag === 'missing_announcements') return '公告/事件信息不足';
   if (flag === 'insufficient_evidence') return '证据链不足，当前结论仅供观察';
   if (flag === 'model_fallback') return '已使用规则兜底结果';
@@ -134,13 +141,17 @@ function OutputTag({ type }: { type: OutputMarkType }) {
 
 function ProcessingState({ stockId }: { stockId?: string }) {
   return (
-    <div className="p-8 flex flex-col items-center justify-center space-y-4 min-h-[60vh]">
-      <div className="w-12 h-12 border-4 border-stone-200 border-t-ink rounded-full animate-spin" />
-      <div className="text-center space-y-1">
-        <p className="font-bold text-lg">正在生成真实数据分析</p>
-        <p className="text-xs text-stone-400">
-          {stockId ? `已开始处理 ${stockId} 的最新行情、公告和公司信息...` : '正在整理行情、公告和风险提示...'}
-        </p>
+    <div className="flex min-h-[62vh] items-center justify-center p-6">
+      <div className="soft-card w-full max-w-sm rounded-[28px] p-6 text-center">
+        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-3xl bg-mist">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-teal-100 border-t-teal-700" />
+        </div>
+        <div className="mt-4 space-y-1">
+          <p className="text-lg font-bold">正在生成决策卡</p>
+          <p className="text-xs leading-relaxed text-stone-500">
+            正在整理场景信息、证据和风险提示{stockId ? `：${stockId}` : '，请稍等片刻'}。
+          </p>
+        </div>
       </div>
     </div>
   );
@@ -379,14 +390,30 @@ export default function ResultPage() {
   const quote = analysis?.stock_snapshot;
   const companyProfile = analysis?.company_profile;
   const recentEvents = analysis?.recent_events || [];
+  const isCampusConsumption = analysis?.scenario === 'pre_trade_check'
+    && analysis?.scenario_payload?.decision_domain === 'campus_consumption';
   const stockName = analysis?.stock_name || analysis?.stock_id || '分析结果';
-  const stockIndustry = analysis?.stock_industry || companyProfile?.board_name || '未识别行业';
-  const market = analysis?.stock_market || analysis?.stock_id.slice(0, 2) || '--';
+  const stockIndustry = isCampusConsumption ? '校园消费场景' : (analysis?.stock_industry || companyProfile?.board_name || '未识别行业');
+  const market = isCampusConsumption ? '消费自检' : (analysis?.stock_market || analysis?.stock_id.slice(0, 2) || '--');
   const validUntil = analysis?.valid_until;
   const dataAsOf = analysis?.data_as_of;
   const confidence = decisionCard?.confidence ?? decisionCard?.confidence_level ?? 'medium';
   const isExpired = validUntil ? Date.now() > new Date(validUntil).getTime() : analysis?.status === 'expired';
   const holdingContext = normalizeHoldingContext(analysis?.holding_context);
+  const monthlyAllowance = payloadNumber(analysis?.scenario_payload, 'monthly_allowance');
+  const spentThisMonth = payloadNumber(analysis?.scenario_payload, 'spent_this_month');
+  const itemPrice = payloadNumber(analysis?.scenario_payload, 'item_price');
+  const installmentMonths = payloadNumber(analysis?.scenario_payload, 'installment_months');
+  const remainingBudget = monthlyAllowance !== null && spentThisMonth !== null ? monthlyAllowance - spentThisMonth : null;
+  const monthlyPayment = itemPrice !== null && installmentMonths ? itemPrice / installmentMonths : null;
+  const campusRiskTags = ['冲动消费', '盲目跟风', '预算透支', '分期依赖'];
+  const campusStudentActions = [
+    '等待 48 小时后再重新判断',
+    '比较 3000 元以内替代方案',
+    '算清总成本、手续费和逾期成本',
+    '至少保留一个月生活费安全垫',
+    '加入月底财务复盘',
+  ];
 
   const handleRemoveFromWatchlist = async () => {
     if (!watchlistItemId) return;
@@ -484,10 +511,10 @@ export default function ResultPage() {
 
   if (error) {
     return (
-      <div className="p-6 min-h-[60vh] flex items-center justify-center">
-        <div className="bg-white rounded-3xl border border-stone-100 p-6 shadow-sm max-w-sm w-full space-y-4 text-center">
-          <div className="w-12 h-12 mx-auto rounded-full bg-red-50 flex items-center justify-center">
-            <AlertCircle className="text-red-500" size={22} />
+      <div className="flex min-h-[60vh] items-center justify-center p-6">
+        <div className="soft-card w-full max-w-sm space-y-4 rounded-[28px] p-6 text-center">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-50">
+            <AlertCircle className="text-amber-600" size={22} />
           </div>
           <div className="space-y-2">
             <h2 className="text-lg font-bold">分析结果暂时不可用</h2>
@@ -495,7 +522,7 @@ export default function ResultPage() {
           </div>
           <button
             onClick={() => window.location.reload()}
-            className="w-full py-3 bg-ink text-white rounded-2xl font-bold flex items-center justify-center gap-2"
+            className="primary-action w-full"
           >
             <RefreshCw size={16} />
             重新加载
@@ -515,17 +542,17 @@ export default function ResultPage() {
       : null;
     const fallbackActions = decisionCard?.next_step_actions?.length
       ? decisionCard.next_step_actions
-      : ['稍后重新发起分析，并先检查股票代码、行情服务和网络状态。'];
+      : ['稍后重新发起分析，并先检查输入对象、数据服务和网络状态。'];
     const fallbackBoundaries = decisionCard?.invalidation_conditions?.length
       ? decisionCard.invalidation_conditions
       : ['本次分析没有形成完整证据前，当前占位结论无效。'];
 
     return (
-      <div className="p-6 min-h-[60vh] flex items-center justify-center">
-        <div className="bg-white rounded-3xl border border-stone-100 p-6 shadow-sm max-w-sm w-full space-y-5">
+      <div className="flex min-h-[60vh] items-center justify-center p-6">
+        <div className="soft-card w-full max-w-sm space-y-5 rounded-[28px] p-6">
           <div className="text-center space-y-3">
-            <div className="w-12 h-12 mx-auto rounded-full bg-red-50 flex items-center justify-center">
-              <AlertTriangle className="text-red-500" size={22} />
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-50">
+              <AlertTriangle className="text-amber-600" size={22} />
             </div>
             <div className="space-y-2">
               <h2 className="text-lg font-bold">分析生成失败</h2>
@@ -537,7 +564,7 @@ export default function ResultPage() {
             </div>
           </div>
 
-          <div className="rounded-2xl bg-stone-50 border border-stone-100 p-4 space-y-3">
+          <div className="space-y-3 rounded-2xl border border-stone-100 bg-stone-50 p-4">
             <div className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">下一步</div>
             <div className="space-y-2">
               {fallbackActions.map((action, index) => (
@@ -549,19 +576,19 @@ export default function ResultPage() {
             </div>
           </div>
 
-          <div className="rounded-2xl bg-amber-50 border border-amber-100 p-4 space-y-3">
+          <div className="space-y-3 rounded-2xl border border-amber-100 bg-amber-50 p-4">
             <div className="text-[10px] font-bold text-amber-600 uppercase tracking-widest">检查项</div>
             <div className="space-y-2 text-xs text-amber-800 leading-relaxed">
-              <div>确认股票代码是否正确，必要时回到搜索页重新选择。</div>
-              <div>如果外部行情或公告接口暂时不可用，稍后重试。</div>
-              <div>不要基于失败占位内容做投资判断。</div>
+              <div>确认输入对象是否正确，必要时回到搜索页重新选择。</div>
+              <div>如果外部数据或风险信息接口暂时不可用，稍后重试。</div>
+              <div>不要基于失败占位内容做购买、借用额度或资金安排。</div>
             </div>
           </div>
 
-          <div className="rounded-2xl bg-red-50 border border-red-100 p-4 space-y-2">
-            <div className="text-[10px] font-bold text-red-600 uppercase tracking-widest">失效边界</div>
+          <div className="space-y-2 rounded-2xl border border-rose-100 bg-rose-50 p-4">
+            <div className="text-[10px] font-bold uppercase tracking-widest text-rose-600">失效边界</div>
             {fallbackBoundaries.map((item, index) => (
-              <div key={`${item}-${index}`} className="text-xs text-red-700 leading-relaxed">
+              <div key={`${item}-${index}`} className="text-xs leading-relaxed text-rose-700">
                 {item}
               </div>
             ))}
@@ -569,7 +596,7 @@ export default function ResultPage() {
 
           <button
             onClick={() => window.location.reload()}
-            className="w-full py-3 bg-ink text-white rounded-2xl font-bold flex items-center justify-center gap-2"
+            className="primary-action w-full"
           >
             <RefreshCw size={16} />
             重新加载
@@ -580,14 +607,14 @@ export default function ResultPage() {
   }
 
   return (
-    <div className="p-4 space-y-6 pb-32">
+    <div className="space-y-5 px-4 py-5 pb-32">
       <AnimatePresence>
         {toastMessage && (
           <motion.div
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
-            className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-ink text-white px-4 py-2 rounded-xl text-sm font-medium shadow-lg"
+            className="fixed top-20 left-1/2 z-50 -translate-x-1/2 rounded-2xl bg-ink px-4 py-2 text-sm font-medium text-white shadow-lg"
           >
             <div className="flex items-center gap-2">
               <CheckCircle2 size={16} />
@@ -597,15 +624,24 @@ export default function ResultPage() {
         )}
       </AnimatePresence>
 
-      <div className="text-[10px] text-stone-400 text-center uppercase tracking-widest py-2 border-b border-stone-100">
-        以下内容用于辅助判断，不构成直接投资建议
+      <div className="rounded-2xl border border-stone-100 bg-white/70 px-3 py-2 text-center text-[10px] font-medium uppercase tracking-widest text-stone-500">
+        以下内容用于校园金融素养教育和辅助判断，不替代个人预算规划或专业意见
       </div>
+
+      {isCampusConsumption && (
+        <section className="space-y-2 rounded-3xl border border-teal-100 bg-mist p-4">
+          <div className="text-[10px] font-bold uppercase tracking-widest text-teal-700">PCG Demo 接入位</div>
+          <p className="text-xs leading-relaxed text-teal-900">
+            当前 Demo 使用模拟数据跑通校园消费决策闭环，没有真实调用外部 PCG API。这里展示的是后续接入位：腾讯财经提供风险教育数据，微信 / QQ 承接校园提醒与分享入口，腾讯云承载部署和模型服务。
+          </p>
+        </section>
+      )}
 
       {analysis.status === 'partial_ready' && (
         <motion.div
           initial={{ opacity: 0, y: -8 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-amber-50 border border-amber-100 rounded-2xl px-4 py-3 flex gap-3 items-start"
+          className="flex items-start gap-3 rounded-3xl border border-amber-100 bg-amber-50 px-4 py-3"
         >
           <Info size={16} className="text-amber-500 shrink-0 mt-0.5" />
           <div className="text-xs text-amber-800 leading-relaxed">
@@ -629,20 +665,20 @@ export default function ResultPage() {
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-red-50 border border-red-100 rounded-2xl p-4 space-y-3"
+          className="space-y-3 rounded-3xl border border-amber-100 bg-amber-50 p-4"
         >
-          <div className="flex items-center gap-2 text-red-600">
+          <div className="flex items-center gap-2 text-teal-700">
             <ShieldAlert size={20} />
             <span className="font-bold">行为干预提醒</span>
           </div>
-          <p className="text-xs text-red-800 leading-relaxed">
+          <p className="text-xs leading-relaxed text-amber-900">
             系统识别到当前场景可能带有情绪化触发，建议先回答下面这些问题，再决定是否动作。
           </p>
           <div className="space-y-2">
             {analysis.intervention.questions.map((question, index) => (
               <div
                 key={`${question}-${index}`}
-                className="bg-white/70 p-3 rounded-xl text-xs text-red-900 border border-red-100/60"
+                className="rounded-2xl border border-amber-100/70 bg-white/75 p-3 text-xs text-amber-950"
               >
                 {question}
               </div>
@@ -651,17 +687,17 @@ export default function ResultPage() {
         </motion.div>
       )}
 
-      {holdingContext && (
+      {holdingContext && !isCampusConsumption && (
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          className="rounded-2xl border border-amber-100 bg-amber-50 p-4"
+          className="rounded-3xl border border-amber-100 bg-amber-50 p-4"
         >
           <div className="flex items-center justify-between gap-3">
             <div>
-              <div className="text-[10px] font-bold uppercase tracking-widest text-amber-600">当前持仓上下文</div>
+              <div className="text-[10px] font-bold uppercase tracking-widest text-amber-600">当前预算上下文</div>
               <div className="mt-1 text-sm font-bold text-amber-900">
-                {holdingContext.stockName} 占组合约 {holdingContext.weightPercent}%
+                {holdingContext.stockName} 占预算目标约 {holdingContext.weightPercent}%
               </div>
             </div>
             <Link to="/portfolio" className="rounded-xl bg-white px-3 py-2 text-xs font-bold text-amber-700">
@@ -670,26 +706,32 @@ export default function ResultPage() {
           </div>
           <p className="mt-2 text-xs leading-relaxed text-amber-800">
             成本 {holdingContext.costPrice}，现价 {holdingContext.currentPrice}，浮动盈亏约 {holdingContext.unrealizedPnl}。
-            持仓价格更新于 {formatDateTime(holdingContext.positionUpdatedAt)}，可能不是实时价格；以下内容用于辅助判断，不构成买卖指令。
+            预算记录更新于 {formatDateTime(holdingContext.positionUpdatedAt)}，可能不是实时金额；以下内容用于辅助判断，不替你做购买或资金安排。
           </p>
         </motion.div>
       )}
 
       <section className={cn(
-        'bg-white rounded-3xl p-6 border border-stone-100 shadow-sm space-y-6',
+        'soft-card space-y-6 rounded-[30px] p-6',
         isExpired && 'opacity-70'
       )}>
+        {isCampusConsumption && (
+          <div className="rounded-3xl border border-teal-100 bg-mist p-4">
+            <div className="text-[10px] font-bold uppercase tracking-widest text-teal-700">六段式校园决策卡</div>
+            <div className="mt-1 text-sm leading-relaxed text-teal-900">当前判断、证据、边界、行动建议和复盘时间一次讲清。</div>
+          </div>
+        )}
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-2 flex-1 min-w-0">
             <div>
-              <div className="text-[10px] font-bold text-stone-300 uppercase tracking-widest">分析标的</div>
-              <h1 className="text-2xl font-bold truncate">{stockName}</h1>
-              <div className="text-xs text-stone-400 font-mono mt-1">
-                {analysis.stock_id} | {market} | {stockIndustry}
+              <div className="text-[10px] font-bold text-stone-300 uppercase tracking-widest">决策对象</div>
+              <h1 className="truncate text-2xl font-bold">{stockName}</h1>
+              <div className="mt-1 truncate font-mono text-xs text-stone-400">
+                {isCampusConsumption ? '校园消费 Demo' : analysis.stock_id} | {market} | {stockIndustry}
               </div>
             </div>
             <div className="text-[10px] text-stone-400">
-              数据时间：{formatDateTime(dataAsOf)}
+              {isCampusConsumption ? '记录时间' : '数据时间'}：{formatDateTime(dataAsOf)}
             </div>
           </div>
           <button
@@ -697,48 +739,90 @@ export default function ResultPage() {
             className={cn(
               'p-2 rounded-xl transition-all',
               isInWatchlist
-                ? 'bg-red-50 text-red-500 hover:bg-red-100'
-                : 'bg-stone-100 text-stone-400 hover:bg-yellow-50 hover:text-yellow-600'
+                ? 'bg-amber-50 text-amber-600 hover:bg-amber-100'
+                : 'bg-stone-100 text-stone-400 hover:bg-mist hover:text-teal-700'
             )}
-            title={isInWatchlist ? '移出观察列表' : '加入观察列表'}
+            title={isCampusConsumption
+              ? (isInWatchlist ? '移出复盘清单' : '加入月底复盘')
+              : (isInWatchlist ? '移出观察列表' : '加入观察列表')}
           >
-            <Star size={20} className={isInWatchlist ? 'fill-red-400' : undefined} />
+            <Star size={20} className={isInWatchlist ? 'fill-amber-400' : undefined} />
           </button>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <div className="rounded-2xl bg-stone-50 p-4">
-            <div className="text-[10px] font-bold text-stone-300 uppercase tracking-widest">最新价</div>
-            <div className="text-2xl font-bold mt-2">{formatPrice(quote?.latest_price)}</div>
-            <div
-              className={cn(
-                'text-xs font-medium mt-1',
-                (quote?.change_percent || 0) >= 0 ? 'text-red-600' : 'text-emerald-600'
-              )}
-            >
-              {formatPercent(quote?.change_percent)}
+        {isCampusConsumption ? (
+          <div className="grid grid-cols-2 gap-3">
+            <div className="rounded-3xl bg-stone-50 p-4">
+              <div className="text-[10px] font-bold text-stone-300 uppercase tracking-widest">月生活费</div>
+              <div className="text-2xl font-bold mt-2">{monthlyAllowance ?? '--'} 元</div>
+              <div className="text-xs text-stone-500 mt-1">已消费 {spentThisMonth ?? '--'} 元</div>
+            </div>
+            <div className="rounded-3xl bg-mist p-4">
+              <div className="text-[10px] font-bold text-stone-300 uppercase tracking-widest">可用余额</div>
+              <div className="text-2xl font-bold mt-2">{remainingBudget ?? '--'} 元</div>
+              <div className="text-xs text-stone-500 mt-1">预算安全线参考</div>
+            </div>
+            <div className="rounded-3xl bg-stone-50 p-4">
+              <div className="text-[10px] font-bold text-stone-300 uppercase tracking-widest">商品价格</div>
+              <div className="text-lg font-bold mt-2">{itemPrice ?? '--'} 元</div>
+              <div className="text-xs text-stone-500 mt-1">高于本月可用余额</div>
+            </div>
+            <div className="rounded-3xl bg-clay p-4">
+              <div className="text-[10px] font-bold text-stone-300 uppercase tracking-widest">分期压力</div>
+              <div className="text-lg font-bold mt-2">{installmentMonths ?? '--'} 期</div>
+              <div className="text-xs text-stone-500 mt-1">每期约 {monthlyPayment === null ? '--' : monthlyPayment.toFixed(0)} 元</div>
             </div>
           </div>
-          <div className="rounded-2xl bg-stone-50 p-4">
-            <div className="text-[10px] font-bold text-stone-300 uppercase tracking-widest">换手率 / 振幅</div>
-            <div className="text-lg font-bold mt-2">{formatPercent(quote?.turnover_rate)}</div>
-            <div className="text-xs text-stone-500 mt-1">振幅 {formatPercent(quote?.amplitude)}</div>
+        ) : (
+          <div className="grid grid-cols-2 gap-3">
+            <div className="rounded-3xl bg-stone-50 p-4">
+              <div className="text-[10px] font-bold text-stone-300 uppercase tracking-widest">最新价</div>
+              <div className="text-2xl font-bold mt-2">{formatPrice(quote?.latest_price)}</div>
+              <div
+                className={cn(
+                  'text-xs font-medium mt-1',
+                  (quote?.change_percent || 0) >= 0 ? 'text-amber-700' : 'text-teal-700'
+                )}
+              >
+                {formatPercent(quote?.change_percent)}
+              </div>
+            </div>
+            <div className="rounded-3xl bg-stone-50 p-4">
+              <div className="text-[10px] font-bold text-stone-300 uppercase tracking-widest">换手率 / 振幅</div>
+              <div className="text-lg font-bold mt-2">{formatPercent(quote?.turnover_rate)}</div>
+              <div className="text-xs text-stone-500 mt-1">振幅 {formatPercent(quote?.amplitude)}</div>
+            </div>
+            <div className="rounded-3xl bg-stone-50 p-4">
+              <div className="text-[10px] font-bold text-stone-300 uppercase tracking-widest">成交额</div>
+              <div className="text-lg font-bold mt-2">{formatLargeNumber(quote?.amount)}</div>
+              <div className="text-xs text-stone-500 mt-1">成交量 {formatLargeNumber(quote?.volume)}</div>
+            </div>
+            <div className="rounded-3xl bg-stone-50 p-4">
+              <div className="text-[10px] font-bold text-stone-300 uppercase tracking-widest">估值</div>
+              <div className="text-lg font-bold mt-2">PE {formatPrice(quote?.pe_ratio)}</div>
+              <div className="text-xs text-stone-500 mt-1">PB {formatPrice(quote?.pb_ratio)}</div>
+            </div>
           </div>
-          <div className="rounded-2xl bg-stone-50 p-4">
-            <div className="text-[10px] font-bold text-stone-300 uppercase tracking-widest">成交额</div>
-            <div className="text-lg font-bold mt-2">{formatLargeNumber(quote?.amount)}</div>
-            <div className="text-xs text-stone-500 mt-1">成交量 {formatLargeNumber(quote?.volume)}</div>
+        )}
+
+        {isCampusConsumption && (
+          <div className="space-y-2">
+            <div className="text-[10px] font-bold text-stone-300 uppercase tracking-widest">风险识别标签</div>
+            <div className="flex flex-wrap gap-2">
+              {campusRiskTags.map((tag) => (
+                <span key={tag} className="rounded-full border border-amber-100 bg-amber-50 px-3 py-1 text-[10px] font-bold text-amber-700">
+                  {tag}
+                </span>
+              ))}
+            </div>
           </div>
-          <div className="rounded-2xl bg-stone-50 p-4">
-            <div className="text-[10px] font-bold text-stone-300 uppercase tracking-widest">估值</div>
-            <div className="text-lg font-bold mt-2">PE {formatPrice(quote?.pe_ratio)}</div>
-            <div className="text-xs text-stone-500 mt-1">PB {formatPrice(quote?.pb_ratio)}</div>
-          </div>
-        </div>
+        )}
 
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-2">
-            <label className="text-[10px] font-bold text-stone-300 uppercase tracking-widest">一句话判断</label>
+            <label className="text-[10px] font-bold text-stone-300 uppercase tracking-widest">
+              {isCampusConsumption ? '1 当前判断' : '当前判断'}
+            </label>
             {confidence && (
               <span className={cn(
                 'px-2 py-0.5 rounded-full text-[10px] font-bold',
@@ -750,25 +834,27 @@ export default function ResultPage() {
               </span>
             )}
           </div>
-          <h2 className="text-xl font-bold leading-tight">{decisionCard.headline_judgement}</h2>
+          <h2 className={cn('break-words font-bold leading-tight', isCampusConsumption ? 'text-2xl text-stone-950' : 'text-xl')}>
+            {decisionCard.headline_judgement}
+          </h2>
         </div>
 
-        <div className="grid grid-cols-3 gap-2 pt-4 border-t border-stone-50">
-          <div className="space-y-1">
+        <div className="grid grid-cols-1 gap-3 border-t border-stone-100 pt-4 sm:grid-cols-3">
+          <div className="space-y-1 rounded-2xl bg-stone-50 p-3">
             <label className="text-[10px] font-bold text-stone-300 uppercase tracking-widest">适合谁</label>
-            <p className="text-xs font-medium text-emerald-600">{decisionCard.user_fit_summary.fit}</p>
+            <p className="text-xs font-medium leading-relaxed text-teal-700">{isCampusConsumption ? '能等待 48 小时并重算预算的学生' : decisionCard.user_fit_summary.fit}</p>
           </div>
-          <div className="space-y-1">
+          <div className="space-y-1 rounded-2xl bg-stone-50 p-3">
             <label className="text-[10px] font-bold text-stone-300 uppercase tracking-widest">不适合谁</label>
-            <p className="text-xs font-medium text-red-600">{decisionCard.user_fit_summary.unfit}</p>
+            <p className="text-xs font-medium leading-relaxed text-amber-700">{isCampusConsumption ? '本月安全垫不足仍想立刻分期的学生' : decisionCard.user_fit_summary.unfit}</p>
           </div>
-          <div className="space-y-1">
+          <div className="space-y-1 rounded-2xl bg-stone-50 p-3">
             <label className="text-[10px] font-bold text-stone-300 uppercase tracking-widest">置信等级</label>
             <p className={cn(
               'text-xs font-bold',
-              confidence === 'high' && 'text-emerald-600',
+              confidence === 'high' && 'text-teal-700',
               confidence === 'medium' && 'text-amber-600',
-              confidence === 'low' && 'text-red-600',
+              confidence === 'low' && 'text-rose-700',
             )}>
               {confidence === 'high' ? '高' : confidence === 'medium' ? '中' : '低'}
             </p>
@@ -776,9 +862,11 @@ export default function ResultPage() {
         </div>
       </section>
 
-      <section className="bg-white rounded-2xl p-5 border border-stone-100 space-y-4">
+      <section className="space-y-4 rounded-3xl border border-stone-100 bg-white/80 p-5">
         <div className="flex items-center justify-between">
-          <h3 className="text-[10px] font-bold text-stone-300 uppercase tracking-widest">核心理由</h3>
+          <h3 className="text-[10px] font-bold text-stone-300 uppercase tracking-widest">
+            {isCampusConsumption ? '2 核心理由' : '核心理由'}
+          </h3>
           <div className="flex items-center gap-1 text-xs text-stone-400">
             <Info size={14} />
             <span>事实 / 推理 / 不确定</span>
@@ -787,7 +875,7 @@ export default function ResultPage() {
         <div className="space-y-4">
           {decisionCard.key_reason_summary.map((item, index) => (
             <div key={`${item.text}-${index}`} className="flex gap-3 items-start">
-              <div className="w-5 h-5 rounded-full bg-stone-100 flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">
+              <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-mist text-[10px] font-bold text-teal-700">
                 {index + 1}
               </div>
               <div className="flex-1 space-y-1">
@@ -800,18 +888,20 @@ export default function ResultPage() {
       </section>
 
       {decisionCard.supporting_evidence && decisionCard.supporting_evidence.length > 0 && (
-        <section className="bg-emerald-50 rounded-2xl p-5 border border-emerald-100 space-y-3">
+        <section className="space-y-3 rounded-3xl border border-teal-100 bg-mist p-5">
           <div className="flex items-center gap-2">
-            <div className="w-4 h-4 rounded-full bg-emerald-400 flex items-center justify-center">
+            <div className="flex h-4 w-4 items-center justify-center rounded-full bg-teal-600">
               <div className="w-1.5 h-1.5 rounded-full bg-white" />
             </div>
-            <h3 className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest">支撑证据</h3>
+            <h3 className="text-[10px] font-bold uppercase tracking-widest text-teal-700">
+              {isCampusConsumption ? '3 支撑证据' : '支撑证据'}
+            </h3>
           </div>
           <div className="space-y-2">
             {decisionCard.supporting_evidence.slice(0, 3).map((item, index) => (
               <div key={`sup-${index}`} className="flex gap-2 items-start">
-                <span className="text-[10px] text-emerald-500 font-bold shrink-0 mt-0.5">S{index + 1}</span>
-                <p className="text-xs text-emerald-800 leading-relaxed">{item}</p>
+                <span className="mt-0.5 shrink-0 text-[10px] font-bold text-teal-700">S{index + 1}</span>
+                <p className="text-xs leading-relaxed text-teal-950">{item}</p>
               </div>
             ))}
           </div>
@@ -819,16 +909,18 @@ export default function ResultPage() {
       )}
 
       {decisionCard.counter_evidence && decisionCard.counter_evidence.length > 0 && (
-        <section className="bg-red-50 rounded-2xl p-5 border border-red-100 space-y-3">
+        <section className="space-y-3 rounded-3xl border border-amber-100 bg-amber-50 p-5">
           <div className="flex items-center gap-2">
-            <AlertTriangle size={14} className="text-red-400" />
-            <h3 className="text-[10px] font-bold text-red-600 uppercase tracking-widest">反方证据</h3>
+            <AlertTriangle size={14} className="text-amber-600" />
+            <h3 className="text-[10px] font-bold uppercase tracking-widest text-amber-700">
+              {isCampusConsumption ? '4 反方证据' : '反方证据'}
+            </h3>
           </div>
           <div className="space-y-2">
             {decisionCard.counter_evidence.map((item, index) => (
               <div key={`cnt-${index}`} className="flex gap-2 items-start">
-                <span className="text-[10px] text-red-400 font-bold shrink-0 mt-0.5">C{index + 1}</span>
-                <p className="text-xs text-red-800 leading-relaxed">{item}</p>
+                <span className="mt-0.5 shrink-0 text-[10px] font-bold text-amber-700">C{index + 1}</span>
+                <p className="text-xs leading-relaxed text-amber-950">{item}</p>
               </div>
             ))}
           </div>
@@ -836,39 +928,62 @@ export default function ResultPage() {
       )}
 
       <section className="space-y-3">
-        <h3 className="text-xs font-bold text-stone-400 uppercase tracking-widest px-1">下一步建议动作</h3>
-        <div className="space-y-2">
+        <h3 className="px-1 text-xs font-bold uppercase tracking-widest text-stone-400">
+          {isCampusConsumption ? '5 行动建议' : '下一步建议动作'}
+        </h3>
+        {isCampusConsumption && (
+          <div className="grid grid-cols-1 gap-2">
+            {campusStudentActions.map((action, index) => (
+              <div key={action} className="flex items-start gap-3 rounded-3xl border border-teal-100 bg-white/80 p-4 text-sm font-medium text-stone-800">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-mist text-xs font-bold text-teal-700">
+                  {index + 1}
+                </span>
+                <span className="leading-relaxed">{action}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="overflow-hidden rounded-3xl border border-stone-100 bg-white/80">
           {decisionCard.next_step_actions.map((action, index) => (
-            <div key={`${action}-${index}`} className="bg-white rounded-2xl p-4 border border-stone-100">
-              <span className="text-sm font-medium">{action}</span>
+            <div
+              key={`${action}-${index}`}
+              className={cn(
+                'flex items-start gap-3 p-4',
+                index < decisionCard.next_step_actions.length - 1 && 'border-b border-stone-100',
+              )}
+            >
+              <CheckCircle2 size={17} className="mt-0.5 shrink-0 text-teal-700" />
+              <span className="text-sm font-medium leading-relaxed">{action}</span>
             </div>
           ))}
         </div>
       </section>
 
       <section className={cn(
-        'rounded-3xl p-6 space-y-5',
-        isExpired ? 'bg-stone-200' : 'bg-stone-900 text-white'
+        'space-y-5 rounded-[28px] border p-5',
+        isExpired ? 'border-stone-200 bg-stone-100' : 'border-amber-100 bg-amber-50'
       )}>
         <div className="space-y-2">
-          <div className="flex items-center gap-2 text-amber-400">
+          <div className="flex items-center gap-2 text-amber-700">
             <AlertCircle size={18} />
-            <label className="text-[10px] font-bold uppercase tracking-widest">主要风险与失效条件</label>
+            <label className="text-[10px] font-bold uppercase tracking-widest">
+              {isCampusConsumption ? '风险提示与失效条件' : '主要风险与失效条件'}
+            </label>
           </div>
-          <p className={cn('text-sm leading-relaxed', isExpired ? 'text-stone-700' : 'text-stone-300')}>
+          <p className={cn('text-sm leading-relaxed', isExpired ? 'text-stone-700' : 'text-amber-950')}>
             {decisionCard.primary_risks}
           </p>
           {decisionCard.invalidation_conditions && decisionCard.invalidation_conditions.length > 0 && (
-            <div className={cn('pt-3 mt-3 border-t space-y-1.5', isExpired ? 'border-stone-300' : 'border-white/10')}>
-              <p className={cn('text-[10px] font-bold uppercase tracking-widest', isExpired ? 'text-stone-500' : 'text-amber-400')}>
+            <div className={cn('mt-3 space-y-2 border-t pt-3', isExpired ? 'border-stone-300' : 'border-amber-200')}>
+              <p className={cn('text-[10px] font-bold uppercase tracking-widest', isExpired ? 'text-stone-500' : 'text-amber-700')}>
                 以下情况请重新评估
               </p>
               {decisionCard.invalidation_conditions.map((cond, index) => (
                 <div key={`inv-${index}`} className="flex gap-2 items-start">
-                  <span className={cn('text-[10px] font-bold shrink-0 mt-0.5', isExpired ? 'text-stone-400' : 'text-amber-400')}>
+                  <span className={cn('mt-0.5 shrink-0 text-[10px] font-bold', isExpired ? 'text-stone-400' : 'text-amber-700')}>
                     ✕
                   </span>
-                  <p className={cn('text-xs leading-relaxed', isExpired ? 'text-stone-600' : 'text-stone-400')}>
+                  <p className={cn('text-xs leading-relaxed', isExpired ? 'text-stone-600' : 'text-amber-900')}>
                     {cond}
                   </p>
                 </div>
@@ -877,31 +992,31 @@ export default function ResultPage() {
           )}
         </div>
 
-        <div className={cn('grid grid-cols-2 gap-4 pt-4 border-t', isExpired ? 'border-stone-300' : 'border-white/10')}>
+        <div className={cn('grid grid-cols-2 gap-4 border-t pt-4', isExpired ? 'border-stone-300' : 'border-amber-200')}>
           <div className="space-y-1">
             <div className="flex items-center gap-2">
-              <Calendar size={16} className={isExpired ? 'text-stone-500' : 'text-stone-400'} />
-              <span className={cn('text-xs', isExpired ? 'text-stone-600' : 'text-stone-400')}>建议复盘时间</span>
+              <Calendar size={16} className={isExpired ? 'text-stone-500' : 'text-amber-700'} />
+              <span className={cn('text-xs', isExpired ? 'text-stone-600' : 'text-amber-800')}>建议复盘时间</span>
             </div>
-            <div className={cn('text-sm font-bold', isExpired ? 'text-stone-800' : 'text-white')}>
+            <div className={cn('text-sm font-bold', isExpired ? 'text-stone-800' : 'text-amber-950')}>
               {formatDate(decisionCard.review_at)}
             </div>
           </div>
           <div className="space-y-1">
             <div className="flex items-center gap-2">
-              <Clock size={16} className={isExpired ? 'text-stone-500' : 'text-stone-400'} />
-              <span className={cn('text-xs', isExpired ? 'text-stone-600' : 'text-stone-400')}>结论有效期</span>
+              <Clock size={16} className={isExpired ? 'text-stone-500' : 'text-amber-700'} />
+              <span className={cn('text-xs', isExpired ? 'text-stone-600' : 'text-amber-800')}>结论有效期</span>
             </div>
-            <div className={cn('text-sm font-bold', isExpired ? 'text-stone-800' : 'text-white')}>
+            <div className={cn('text-sm font-bold', isExpired ? 'text-stone-800' : 'text-amber-950')}>
               {formatDate(validUntil)}
             </div>
           </div>
         </div>
       </section>
 
-      <section className="bg-white rounded-2xl p-4 border border-stone-100 space-y-3">
+      <section className="space-y-3 rounded-3xl border border-stone-100 bg-white/80 p-4">
         <div className="flex items-center justify-between">
-          <h3 className="text-[10px] font-bold text-stone-300 uppercase tracking-widest">市场背景</h3>
+          <h3 className="text-[10px] font-bold text-stone-300 uppercase tracking-widest">{isCampusConsumption ? '场景背景' : '市场背景'}</h3>
           {analysis.status === 'partial_ready' ? (
             <span className="text-[10px] text-amber-500">数据暂时缺失</span>
           ) : (
@@ -918,7 +1033,23 @@ export default function ResultPage() {
         )}
       </section>
 
-      <section className="bg-white rounded-2xl p-4 border border-stone-100 space-y-3">
+      {isCampusConsumption && (
+        <section className="space-y-3 rounded-3xl border border-teal-100 bg-mist p-5">
+          <div className="flex items-center gap-2 text-amber-700">
+            <Calendar size={16} />
+            <h3 className="text-xs font-bold uppercase tracking-widest text-teal-700">6 复盘闭环</h3>
+          </div>
+          <p className="text-sm leading-relaxed text-teal-950">
+            本次行为已建议加入月底财务复盘。复盘时检查：是否仍想买、预算是否改善、是否找到替代方案。
+          </p>
+          <p className="text-xs leading-relaxed text-teal-800">
+            系统会把本次风险标签用于后续提醒，帮助小林在下一次大额消费前更早看见同类风险。
+          </p>
+        </section>
+      )}
+
+      {!isCampusConsumption && (
+      <section className="space-y-3 rounded-3xl border border-stone-100 bg-white/80 p-4">
         <div className="flex items-center justify-between">
           <h3 className="text-[10px] font-bold text-stone-300 uppercase tracking-widest">公司概况</h3>
           {analysis.status === 'partial_ready' ? (
@@ -938,8 +1069,10 @@ export default function ResultPage() {
           </div>
         )}
       </section>
+      )}
 
-      <section className="bg-white rounded-2xl p-4 border border-stone-100 space-y-3">
+      {!isCampusConsumption && (
+      <section className="space-y-3 rounded-3xl border border-stone-100 bg-white/80 p-4">
         <div className="flex items-center justify-between">
           <h3 className="text-[10px] font-bold text-stone-300 uppercase tracking-widest">最近公告与事件</h3>
           <span className="text-xs text-stone-400">{recentEvents.length} 条</span>
@@ -952,7 +1085,7 @@ export default function ResultPage() {
                 href={event.url || '#'}
                 target={event.url ? '_blank' : undefined}
                 rel={event.url ? 'noreferrer' : undefined}
-                className="block rounded-2xl border border-stone-100 p-4 hover:bg-stone-50 transition-colors"
+                className="block rounded-2xl border border-stone-100 p-4 transition-colors hover:bg-stone-50"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="space-y-1">
@@ -972,7 +1105,9 @@ export default function ResultPage() {
           </div>
         )}
       </section>
+      )}
 
+      {!isCampusConsumption && (
       <button
         onClick={() => setShowDetails((current) => !current)}
         className="w-full py-4 text-stone-400 text-xs font-bold uppercase tracking-widest flex items-center justify-center gap-2"
@@ -980,8 +1115,9 @@ export default function ResultPage() {
         {showDetails ? '收起更多数据' : '展开更多数据'}
         <ChevronDown size={14} className={cn('transition-transform', showDetails && 'rotate-180')} />
       </button>
+      )}
 
-      {showDetails && (
+      {!isCampusConsumption && showDetails && (
         <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="space-y-4 overflow-hidden">
           <div className="bg-stone-100 rounded-2xl p-4 space-y-4">
             <div className="space-y-2">
@@ -1027,22 +1163,22 @@ export default function ResultPage() {
 
       <button
         onClick={() => setShowExplain(true)}
-        className="w-full bg-blue-50 border border-blue-100 rounded-2xl p-4 flex items-center justify-between"
+        className="flex w-full items-center justify-between rounded-3xl border border-teal-100 bg-mist p-4"
       >
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white">
+          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-teal-700 text-white">
             <MessageSquare size={20} />
           </div>
           <div className="text-left">
-            <div className="text-sm font-bold text-blue-900">AI 解释层</div>
-            <div className="text-[10px] text-blue-600 font-medium">
+            <div className="text-sm font-bold text-teal-950">AI 解释层</div>
+            <div className="text-[10px] font-medium text-teal-700">
               {analysis.status === 'partial_ready' && !analysis.explanation_layer
                 ? '解释层数据暂时缺失'
                 : '把这张分析卡片讲得更直白一点'}
             </div>
           </div>
         </div>
-        <ChevronDown size={20} className="text-blue-300 -rotate-90" />
+        <ChevronDown size={20} className="-rotate-90 text-teal-500" />
       </button>
 
       <AnimatePresence>
@@ -1059,7 +1195,7 @@ export default function ResultPage() {
               initial={{ y: '100%' }}
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
-              className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white rounded-t-[32px] z-50 p-6 safe-bottom"
+              className="safe-bottom fixed bottom-0 left-1/2 z-50 w-full max-w-lg -translate-x-1/2 rounded-t-[32px] bg-white p-6"
             >
               <div className="w-12 h-1.5 bg-stone-200 rounded-full mx-auto mb-6" />
               <div className="space-y-6">
@@ -1069,15 +1205,15 @@ export default function ResultPage() {
                     {analysis.explanation_layer?.plain_text || '暂无解释文本'}
                   </p>
                 </div>
-                <div className="bg-blue-50 p-4 rounded-2xl space-y-2">
-                  <h4 className="text-xs font-bold text-blue-900 uppercase tracking-widest">生活化类比</h4>
-                  <p className="text-sm text-blue-800 italic">
+                <div className="space-y-2 rounded-2xl bg-mist p-4">
+                  <h4 className="text-xs font-bold uppercase tracking-widest text-teal-900">生活化类比</h4>
+                  <p className="text-sm italic text-teal-800">
                     “{analysis.explanation_layer?.case_example || '暂无类比说明'}”
                   </p>
                 </div>
                 <button
                   onClick={() => setShowExplain(false)}
-                  className="w-full py-4 bg-ink text-white rounded-2xl font-bold"
+                  className="primary-action w-full"
                 >
                   我知道了
                 </button>
@@ -1101,7 +1237,7 @@ export default function ResultPage() {
               initial={{ y: '100%' }}
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
-              className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white rounded-t-[32px] z-50 p-6 safe-bottom"
+              className="safe-bottom fixed bottom-0 left-1/2 z-50 w-full max-w-lg -translate-x-1/2 rounded-t-[32px] bg-white p-6"
             >
               <div className="flex items-center justify-between mb-6">
                 <h3 className="text-xl font-bold">记录关注理由</h3>
@@ -1114,10 +1250,10 @@ export default function ResultPage() {
               </div>
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <label className="text-sm font-semibold">你为什么要继续关注这只股票？</label>
+                  <label className="text-sm font-semibold">你为什么要继续关注这个事项？</label>
                   <textarea
-                    placeholder="例如：等下一份财报、观察公告兑现情况、确认价格是否企稳"
-                    className="w-full bg-stone-50 border border-stone-200 rounded-2xl p-4 text-sm h-32 focus:ring-2 focus:ring-ink resize-none"
+                    placeholder="例如：7 天后重新确认必要性、观察预算是否充足、比较替代方案"
+                    className="h-32 w-full resize-none rounded-2xl border border-stone-200 bg-stone-50 p-4 text-sm focus:ring-2 focus:ring-teal-700/25"
                     maxLength={100}
                     value={focusReason}
                     onChange={(event) => setFocusReason(event.target.value)}
@@ -1127,14 +1263,14 @@ export default function ResultPage() {
                 <div className="flex gap-3 pt-2">
                   <button
                     onClick={() => setShowFocusReasonModal(false)}
-                    className="flex-1 py-4 bg-stone-100 text-stone-700 rounded-2xl font-bold"
+                    className="flex-1 rounded-2xl bg-stone-100 py-4 font-bold text-stone-700"
                   >
                     取消
                   </button>
                   <button
                     onClick={handleSaveFocusReason}
                     disabled={!focusReason.trim() || savingReason}
-                    className="flex-1 py-4 bg-ink text-white rounded-2xl font-bold disabled:opacity-30"
+                    className="flex-1 rounded-2xl bg-teal-700 py-4 font-bold text-white disabled:opacity-30"
                   >
                     {savingReason ? '保存中...' : '保存'}
                   </button>
@@ -1155,32 +1291,36 @@ export default function ResultPage() {
         showCount={feedbackShowCount}
       />
 
-      <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white/80 backdrop-blur-xl border-t border-stone-100 p-4 safe-bottom z-30">
-        <div className="flex gap-3">
+      <div className="safe-bottom fixed bottom-0 left-1/2 z-30 w-full max-w-lg -translate-x-1/2 border-t border-stone-100 bg-white/90 p-4 backdrop-blur-xl">
+        <div className="grid grid-cols-[48px_1fr_1fr] gap-2">
           <button
             onClick={handleCreateShare}
             disabled={sharing}
-            className="w-12 h-12 shrink-0 bg-stone-100 text-ink rounded-xl font-bold text-sm hover:bg-stone-200 transition-colors flex items-center justify-center disabled:opacity-40"
+            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-stone-100 text-sm font-bold text-ink transition-colors hover:bg-stone-200 disabled:opacity-40"
             title="生成分享卡片"
           >
             <Share2 size={18} />
           </button>
           <button
             onClick={() => setShowFocusReasonModal(true)}
-            className="flex-1 py-3 bg-stone-100 text-ink rounded-xl font-bold text-sm hover:bg-stone-200 transition-colors"
+            className="min-w-0 rounded-2xl bg-stone-100 px-2 py-3 text-sm font-bold text-ink transition-colors hover:bg-stone-200"
           >
-            记录关注理由
+            <span className="block truncate">{isCampusConsumption ? '记录复盘理由' : '记录关注理由'}</span>
           </button>
           <button
             onClick={isInWatchlist ? handleRemoveFromWatchlist : handleAddToWatchlist}
             className={cn(
-              'flex-1 py-3 rounded-xl font-bold text-sm transition-colors',
+              'min-w-0 rounded-2xl px-2 py-3 text-sm font-bold transition-colors',
               isInWatchlist
-                ? 'bg-red-50 text-red-600 hover:bg-red-100'
-                : 'bg-ink text-white hover:bg-stone-800'
+                ? 'bg-amber-50 text-amber-700 hover:bg-amber-100'
+                : 'bg-teal-700 text-white hover:bg-teal-800'
             )}
           >
-            {isInWatchlist ? '移出观察列表' : '加入观察列表'}
+            <span className="block truncate">
+              {isCampusConsumption
+                ? (isInWatchlist ? '移出复盘清单' : '加入月底复盘')
+                : (isInWatchlist ? '移出观察列表' : '加入观察列表')}
+            </span>
           </button>
         </div>
       </div>

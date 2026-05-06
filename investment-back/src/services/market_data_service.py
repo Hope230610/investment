@@ -717,6 +717,18 @@ class MarketDataService:
     def _mock_stock_universe(self) -> list[dict[str, Any]]:
         return [
             {
+                "stock_id": "SZ000200",
+                "stock_code": "000200",
+                "stock_name": "5999元手机分期",
+                "market": "SZ",
+                "industry": "校园消费决策",
+                "pinyin": "SJFC",
+                "base_price": 5999.00,
+                "change_percent": 0.00,
+                "pe_ratio": 0.00,
+                "pb_ratio": 0.00,
+            },
+            {
                 "stock_id": "SH600519",
                 "stock_code": "600519",
                 "stock_name": "贵州茅台",

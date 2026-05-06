@@ -20,9 +20,9 @@ import { cn } from '../utils';
 
 const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
   review_reminder: '复盘提醒',
-  watchlist_alert: '观察池异动',
+  watchlist_alert: '观察事项提醒',
   analysis_invalidation: '结论可能失效',
-  portfolio_risk: '持仓风险',
+  portfolio_risk: '预算风险',
 };
 
 const NOTIFICATION_TYPE_ICONS: Record<string, React.ElementType> = {
@@ -129,7 +129,7 @@ function SummaryBar({ summary }: { summary: NotificationSummary }) {
   const items = [
     { label: '已逾期', count: summary.overdue_count, color: 'text-red-600', bg: 'bg-red-50' },
     { label: '即将到期', count: summary.due_soon_count, color: 'text-amber-600', bg: 'bg-amber-50' },
-    { label: '观察异动', count: summary.watchlist_alert_count, color: 'text-blue-600', bg: 'bg-blue-50' },
+    { label: '观察提醒', count: summary.watchlist_alert_count, color: 'text-blue-600', bg: 'bg-blue-50' },
     { label: '结论预警', count: summary.invalidation_count, color: 'text-orange-600', bg: 'bg-orange-50' },
   ];
 
@@ -239,7 +239,7 @@ export default function NotificationsPage() {
       <div className="bg-stone-50 border border-stone-100 rounded-xl p-3 flex gap-3 items-start">
         <AlertCircle className="text-stone-400 shrink-0 mt-0.5" size={14} />
         <p className="text-[11px] text-stone-500 leading-relaxed">
-          提醒仅供辅助参考，不构成投资建议。所有决策请结合自身资金计划和风险承受能力判断。
+          提醒仅供校园金融素养教育和辅助参考，不构成购买推荐、借贷安排或投资推荐。
         </p>
       </div>
 

@@ -99,20 +99,20 @@ export default function MePage() {
 
         <div className="flex flex-wrap gap-2">
           <span className="px-2 py-1 bg-stone-50 rounded-md text-[10px] font-medium uppercase tracking-wider">
-            风险：{riskLabel}
+            承受能力：{riskLabel}
           </span>
           <span className="px-2 py-1 bg-stone-50 rounded-md text-[10px] font-medium uppercase tracking-wider">
-            周期：{horizonLabel}
+            规划周期：{horizonLabel}
           </span>
           {profile?.behavior_tags?.map((tag) => (
             <span
               key={tag}
               className="px-2 py-1 bg-blue-50 text-blue-600 rounded-md text-[10px] font-medium uppercase tracking-wider"
             >
-              {tag === 'chasing_rise' ? '追涨倾向'
-                : tag === 'panic_sell' ? '恐慌卖出'
-                : tag === 'frequent_trading' ? '频繁交易'
-                : tag === 'disciplined' ? '纪律稳定'
+              {tag === 'chasing_rise' ? '盲目跟风'
+                : tag === 'panic_sell' ? '过度焦虑'
+                : tag === 'frequent_trading' ? '分期依赖'
+                : tag === 'disciplined' ? '预算纪律稳定'
                 : tag}
             </span>
           ))}
@@ -123,7 +123,7 @@ export default function MePage() {
       <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 flex gap-3 items-start">
         <Info size={16} className="text-amber-500 shrink-0 mt-0.5" />
         <p className="text-xs text-amber-800 leading-relaxed">
-          系统提供的是"结构化辅助判断"，不是直接买卖建议。所有结论都应和你自己的资金计划一起使用。
+          系统提供的是校园金融素养教育和结构化辅助判断，不做购买推荐、借贷诱导或投资推荐。
         </p>
       </div>
 
@@ -135,7 +135,7 @@ export default function MePage() {
         >
           <div className="flex items-center gap-3">
             <Settings size={20} className="text-stone-400" />
-            <span className="font-medium text-sm">用户画像配置</span>
+            <span className="font-medium text-sm">学生财务画像配置</span>
           </div>
           <ChevronRight size={18} className="text-stone-300" />
         </Link>
@@ -154,7 +154,7 @@ export default function MePage() {
       {/* 版本信息 */}
       <div className="text-center">
         <div className="text-[10px] text-stone-300 uppercase tracking-widest">
-          AI 投资助手 v1.0.0 · 内测版
+          AI 金融素养教练 v1.0.0 · 比赛 Demo
         </div>
       </div>
     </div>

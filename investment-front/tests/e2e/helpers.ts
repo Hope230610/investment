@@ -5,7 +5,7 @@
  * DB queries, and wait utilities stay in one place.
  */
 
-import { test as base, type Page, type APIResponse } from '@playwright/test';
+import { test as base, type Page, type APIResponse, type BrowserContext } from '@playwright/test';
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -15,12 +15,53 @@ const BASE_URL = process.env['E2E_BASE_URL'] ?? 'http://localhost:3000';
 const API_URL  = process.env['E2E_API_URL']  ?? 'http://localhost:8000';
 const TEST_USER = process.env['E2E_USER']       ?? 'testuser';
 const TEST_PASS = process.env['E2E_PASS']       ?? 'testpassword123';
+const E2E_RUN_ID = process.env['E2E_RUN_ID'] ?? `${Date.now()}-${process.pid}`;
+let authUserCounter = 0;
+const contextUsers = new WeakMap<BrowserContext, string>();
 
 // ---------------------------------------------------------------------------
 // Auth helpers
 // ---------------------------------------------------------------------------
 
 export { BASE_URL, API_URL, TEST_USER, TEST_PASS };
+
+async function registerIsolatedUser(page: Page) {
+  let username = contextUsers.get(page.context());
+  if (!username) {
+    authUserCounter += 1;
+    username = `pw_${authUserCounter}_${Math.random().toString(36).slice(2, 8)}_${TEST_USER}_${E2E_RUN_ID}`
+      .replace(/[^a-zA-Z0-9_-]/g, '_')
+      .slice(0, 50);
+    contextUsers.set(page.context(), username);
+  }
+
+  const response = await page.request.post(`${API_URL}/api/v1/user/register`, {
+    data: { username, password: TEST_PASS },
+  });
+  if (!response.ok() && response.status() !== 409) {
+    throw new Error(`E2E user registration failed: ${response.status()} ${await response.text()}`);
+  }
+
+  const loginResponse = response.status() === 409
+    ? await page.request.post(`${API_URL}/api/v1/user/login`, { data: { username, password: TEST_PASS } })
+    : response;
+  if (!loginResponse.ok()) {
+    throw new Error(`E2E user login failed: ${loginResponse.status()} ${await loginResponse.text()}`);
+  }
+
+  const body = await loginResponse.json() as { access_token: string; user?: unknown };
+  await page.goto(BASE_URL);
+  await page.evaluate(
+    ({ token, user }) => {
+      window.localStorage.setItem('ai_investment_access_token', token);
+      if (user) {
+        window.localStorage.setItem('ai_investment_user', JSON.stringify(user));
+      }
+      window.dispatchEvent(new Event('ai-investment-auth-change'));
+    },
+    { token: body.access_token, user: body.user ?? null },
+  );
+}
 
 export function getAnalysisIdFromResultUrl(page: Page): string {
   const { pathname } = new URL(page.url());
@@ -38,6 +79,7 @@ export function getAnalysisIdFromResultUrl(page: Page): string {
 
 /** Log in via the UI login form and wait for the dashboard to load. */
 export async function loginAs(page: Page) {
+  await registerIsolatedUser(page);
   await page.goto(`${BASE_URL}/login`);
   await page.waitForLoadState('domcontentloaded');
   if (await getAccessToken(page)) {

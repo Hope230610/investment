@@ -62,7 +62,7 @@ export default function SharePage() {
           </div>
           <div className="space-y-1">
             <h2 className="text-lg font-bold leading-snug">{snapshot.title}</h2>
-            <p className="text-xs text-stone-400">结构化观点记录卡</p>
+            <p className="text-xs text-stone-400">校园金融素养成长卡</p>
           </div>
         </div>
         <p className="text-sm text-stone-600 leading-relaxed">{snapshot.summary}</p>
@@ -73,7 +73,7 @@ export default function SharePage() {
       </section>
 
       <section className="bg-white border border-stone-100 rounded-2xl p-5 space-y-3">
-        <h3 className="text-xs font-bold text-stone-400 uppercase tracking-widest">支持证据</h3>
+        <h3 className="text-xs font-bold text-stone-400 uppercase tracking-widest">支撑证据</h3>
         {snapshot.support_evidence.map((item, index) => (
           <p key={index} className="text-sm text-stone-700 leading-relaxed">{item}</p>
         ))}
@@ -87,7 +87,7 @@ export default function SharePage() {
       </section>
 
       <section className="bg-stone-900 text-white rounded-2xl p-5 space-y-3">
-        <h3 className="text-xs font-bold text-amber-300 uppercase tracking-widest">失效条件</h3>
+        <h3 className="text-xs font-bold text-amber-300 uppercase tracking-widest">复盘条件</h3>
         {snapshot.invalidation_conditions.map((item, index) => (
           <p key={index} className="text-sm text-stone-200 leading-relaxed">{item}</p>
         ))}

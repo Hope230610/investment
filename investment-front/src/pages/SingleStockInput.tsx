@@ -41,12 +41,12 @@ export default function SingleStockInput() {
   return (
     <div className="p-4 space-y-8">
       <div className="space-y-2">
-        <h2 className="text-2xl font-bold tracking-tight">单股咨询</h2>
-        <p className="text-sm text-stone-400">快速评估这只股票现在是否值得继续跟踪</p>
+        <h2 className="text-2xl font-bold tracking-tight">金融产品风险评估</h2>
+        <p className="text-sm text-stone-400">拆解夸张宣传和低风险话术，先看清期限、费用和最坏情况。</p>
       </div>
 
       <section className="space-y-3">
-        <label className="text-sm font-bold uppercase tracking-widest text-stone-400">选择股票</label>
+        <label className="text-sm font-bold uppercase tracking-widest text-stone-400">选择评估对象</label>
         <button
           onClick={() => navigate('/stock/search?callback=/analysis/single-stock')}
           className="w-full p-4 bg-white border border-stone-200 rounded-2xl flex items-center justify-between group"
@@ -59,7 +59,7 @@ export default function SingleStockInput() {
           ) : (
             <div className="flex items-center gap-2 text-stone-400">
               <Search size={18} />
-              <span className="text-sm">点击搜索 A 股标的</span>
+              <span className="text-sm">点击搜索演示数据或金融产品</span>
             </div>
           )}
           <ChevronRight size={18} className="text-stone-300" />
@@ -68,11 +68,11 @@ export default function SingleStockInput() {
 
       <section className="space-y-3">
         <div className="flex items-center justify-between">
-          <label className="text-sm font-bold uppercase tracking-widest text-stone-400">关注原因</label>
+          <label className="text-sm font-bold uppercase tracking-widest text-stone-400">评估原因</label>
           <span className="text-[10px] text-stone-300">{reason.length}/100</span>
         </div>
         <textarea
-          placeholder="例如：近期跌幅较大、行业有利好消息、准备加入观察列表等"
+          placeholder="例如：看到宣传说低风险高回报，想拆解真实成本和风险"
           className="w-full bg-white border border-stone-200 rounded-2xl p-4 text-sm h-32 focus:ring-2 focus:ring-ink resize-none"
           maxLength={100}
           value={reason}
@@ -83,7 +83,7 @@ export default function SingleStockInput() {
       <div className="bg-stone-100 p-4 rounded-2xl flex gap-3 items-start">
         <Info size={18} className="text-stone-400 shrink-0 mt-0.5" />
         <p className="text-xs text-stone-500 leading-relaxed">
-          系统会基于实时股价、最近公告和你的用户画像生成一张可以直接用于跟踪管理的分析卡片。
+          系统会基于公开信息、风险提示和你的学生财务画像生成风险教育卡片，不提供购买推荐。
         </p>
       </div>
 
@@ -102,7 +102,7 @@ export default function SingleStockInput() {
           {submitting ? '分析中...' : '开始结构化分析'}
         </button>
         <p className="text-center text-[10px] text-stone-400 mt-4 uppercase tracking-widest">
-          系统不会直接给出买卖指令
+          系统不会直接给出购买推荐
         </p>
       </div>
     </div>

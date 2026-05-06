@@ -37,9 +37,9 @@ class AdaptationService:
 
         调整优先级（从高到低）：
         1. 学习历史信号（judgment trend / emotion level）—— 最高优先
-        2. 行为标签（chasing_rise / panic_sell / frequent_trading）
-        3. 风险承受偏好
-        4. 持有周期
+        2. 行为标签（盲目跟风 / 过度焦虑 / 分期依赖）
+        3. 财务风险承受能力
+        4. 规划周期
         5. 经验水平
         """
         self.logger.info(
@@ -58,10 +58,10 @@ class AdaptationService:
         # 2. 行为标签
         adapted = self._adapt_behavior_tags(adapted, user_profile.behavior_tags or [])
 
-        # 3. 风险承受偏好
+        # 3. 财务风险承受能力
         adapted = self._adapt_risk_tolerance(adapted, user_profile.risk_tolerance)
 
-        # 4. 持有周期（调整 next_step_actions 时间维度）
+        # 4. 规划周期（调整 next_step_actions 时间维度）
         adapted = self._adapt_holding_horizon(adapted, user_profile.holding_horizon)
 
         # 5. 经验水平
@@ -116,26 +116,26 @@ class AdaptationService:
 
         if metrics.high_emotion_flag:
             injected_actions.append(
-                "【情绪提示】近期情绪评分偏高，请在冷静后再审视本次判断，避免情绪化决策"
+                "【情绪提示】近期情绪评分偏高，请在冷静期后再审视本次消费判断，避免冲动消费"
             )
 
         if metrics.declining_judgment_flag:
             injected_actions.append(
-                "【判断质量下滑】近期待验证的结论偏多，建议先等待信号确认再行动"
+                "【判断质量下滑】近期待验证的结论偏多，建议先补全预算和真实需求再行动"
             )
 
         if metrics.frequent_trading_flag:
             injected_actions.append(
-                "【交易频率偏高】当前判断质量均值偏低，建议降低交易频率，等信号更清晰再操作"
+                "【分期依赖提醒】当前判断质量均值偏低，建议减少大额分期频率，先守住生活费安全线"
             )
 
         # ③ primary_risks 前置警告（情绪/判断质量问题时加重提示）
         if metrics.high_emotion_flag or metrics.declining_judgment_flag:
             extra_risk = ""
             if metrics.high_emotion_flag:
-                extra_risk += "情绪评分近期偏高，当前决策受情绪影响的风险升高。 "
+                extra_risk += "情绪评分近期偏高，当前消费决策受冲动和攀比影响的风险升高。 "
             if metrics.declining_judgment_flag:
-                extra_risk += "判断质量近期有所下滑，历史判断错误率上升，需要更严格的验证标准。 "
+                extra_risk += "判断质量近期有所下滑，需要更严格地验证预算、需求和总成本。 "
             decision.primary_risks = extra_risk + decision.primary_risks
 
         # 将注入动作插入到 next_step_actions 最前
@@ -158,37 +158,37 @@ class AdaptationService:
         """
         tags_str = [t.value if isinstance(t, BehaviorTag) else t for t in tags]
 
-        chasing = "chasing_rise" in tags_str or "追涨倾向" in tags_str
-        panic = "panic_sell" in tags_str or "恐慌卖出" in tags_str
-        frequent = "frequent_trading" in tags_str or "频繁交易" in tags_str
-        stable = "stable_discipline" in tags_str or "纪律稳定" in tags_str
+        chasing = "chasing_rise" in tags_str or "追涨倾向" in tags_str or "盲目跟风" in tags_str or "冲动消费" in tags_str
+        panic = "panic_sell" in tags_str or "恐慌卖出" in tags_str or "过度焦虑" in tags_str
+        frequent = "frequent_trading" in tags_str or "频繁交易" in tags_str or "分期依赖" in tags_str
+        stable = "stable_discipline" in tags_str or "纪律稳定" in tags_str or "预算纪律稳定" in tags_str
 
         if chasing:
             self.logger.info("adapting_for_chasing_rise_tag")
             decision.next_step_actions.insert(
                 0,
-                "【追涨提醒】请再次确认：本次判断是否因短期涨幅引发买入冲动？"
-                "建议与前次判断间隔至少 2 个交易日。",
+                "【盲目跟风提醒】请再次确认：本次消费是否因同伴影响、限时优惠或害怕落后引发？"
+                "建议至少等待 48 小时后再重新判断。",
             )
 
         if panic:
             self.logger.info("adapting_for_panic_sell_tag")
             decision.next_step_actions.insert(
                 0,
-                "【恐慌提醒】请先冷静 10 分钟，确认下跌是否已触及基本面变化。",
+                "【焦虑提醒】请先冷静 30 分钟，确认这是真实需求还是短期压力。",
             )
 
         if frequent:
             self.logger.info("adapting_for_frequent_trading_tag")
             decision.next_step_actions.append(
-                "【频率提醒】建议减少换手频率，等待已有持仓信号验证后再考虑新操作。"
+                "【分期提醒】建议减少大额分期频率，先确认生活费安全线和还款压力。"
             )
 
         if stable:
             self.logger.info("adapting_for_stable_discipline_tag")
             # 纪律稳定用户不需要额外干预，追加一条强化鼓励
             decision.next_step_actions.append(
-                "【保持纪律】您的历史判断质量稳定，建议继续维持当前节奏。"
+                "【保持纪律】你的预算纪律较稳定，建议继续维持记录和复盘节奏。"
             )
 
         return decision
@@ -201,17 +201,16 @@ class AdaptationService:
         """
         根据风险承受偏好调整 primary_risks 权重和 next_step_actions 措辞。
 
-        - LOW：加重风险措辞，强调止损边界
+        - LOW：加重风险措辞，强调预算安全垫
         - HIGH：适度降低保守提示，避免过度干预
         """
         if tolerance == RiskTolerance.LOW:
             if not decision.primary_risks.startswith("【风控提醒】"):
                 decision.primary_risks = (
-                    "【风控提醒】低风险偏好用户建议严格控制单笔仓位不超过总仓位的 20%，"
-                    "并设定明确的止损边界。\n" + decision.primary_risks
+                    "【预算提醒】低财务风险承受能力用户建议严格控制单笔大额消费，"
+                    "并保留至少一个月生活费安全垫。\n" + decision.primary_risks
                 )
-            # 低风险用户：确保止损建议在首位
-            stop_loss_action = "建议设定止损线，明确失效边界后再决定是否操作"
+            stop_loss_action = "建议先设定预算上限和暂缓条件，再决定是否购买"
             if stop_loss_action not in decision.next_step_actions:
                 decision.next_step_actions.insert(
                     0 if len(decision.next_step_actions) < 2 else 1,
@@ -233,20 +232,20 @@ class AdaptationService:
         """
         根据持有周期调整 next_step_actions 的时间维度。
 
-        - SHORT：强调短期信号验证、止损
-        - MEDIUM：平衡短期信号与中期逻辑
-        - LONG：强调基本面验证、避免短期噪音干扰
+        - SHORT：强调本月预算和安全线
+        - MEDIUM：平衡本学期规划和阶段性支出
+        - LONG：强调长期储蓄目标和应急金
         """
         if horizon == HoldingHorizon.SHORT:
             # 短期用户：追加短期验证建议（如果还没有的话）
-            short_action = "建议在 3 个交易日内完成信号验证，逾期则重新评估"
+            short_action = "建议在 7 天内完成预算复盘，确认本月生活费是否仍安全"
             if short_action not in decision.next_step_actions:
                 decision.next_step_actions.append(short_action)
 
         elif horizon == HoldingHorizon.LONG:
             # 长期用户：追加忽略短期噪音的建议
             long_action = (
-                "【长期投资者提示】请忽略短期噪音，关注基本面逻辑是否发生实质变化"
+                "【长期规划提示】请优先确认这笔支出是否影响储蓄目标、奖助学金安排或应急金"
             )
             if long_action not in decision.next_step_actions:
                 decision.next_step_actions.append(long_action)
@@ -266,15 +265,15 @@ class AdaptationService:
         """
         if experience == ExperienceLevel.NOVICE:
             novice_action = (
-                "【新手提示】每条建议都应转化为具体操作，例如设定价格提醒、"
-                "写下本次判断的理由、设置复盘时间"
+                "【新手提示】每条建议都应转化为具体动作，例如设定预算上限、"
+                "写下购买理由、设置复盘时间"
             )
             if novice_action not in decision.next_step_actions:
                 decision.next_step_actions.append(novice_action)
 
         elif experience == ExperienceLevel.EXPERT:
             expert_action = (
-                "【进阶建议】可进一步交叉验证该标的的行业对比和资金流向数据"
+                "【进阶建议】可进一步比较替代方案、总拥有成本和未来三个月现金流"
             )
             if expert_action not in decision.next_step_actions:
                 decision.next_step_actions.append(expert_action)
@@ -300,11 +299,11 @@ class AdaptationService:
         base_fit = decision.user_fit_summary
 
         if user_profile.experience_level == ExperienceLevel.NOVICE:
-            fit = "适合初学者，建议以学习为主，控制仓位，记录每次决策的理由"
-            unfit = "不适合缺乏经验且追求快速收益的投资者"
+            fit = "适合金融素养初学者，建议以学习和预算边界为主，记录每次决策理由"
+            unfit = "不适合希望系统直接替自己决定购买或借贷的人"
         elif user_profile.experience_level == ExperienceLevel.EXPERT:
-            fit = "适合有体系的投资者，可以根据技术面和基本面综合判断"
-            unfit = "不适合缺乏独立分析能力的投资者"
+            fit = "适合已有规划习惯的学生，可以结合预算、需求和长期目标综合判断"
+            unfit = "不适合缺乏独立判断且希望追求高收益捷径的人"
         else:
             # 中级用户：结合判断质量趋势动态调整
             fit = base_fit.fit
@@ -313,13 +312,13 @@ class AdaptationService:
             if learning_metrics and not learning_metrics.judgment_insufficient:
                 if learning_metrics.judgment_trend_direction == "down":
                     fit = (
-                        "适合有一定基础但近期判断质量有所下滑的投资者，"
-                        "建议降低操作频率，重新验证判断方法"
+                        "适合有一定基础但近期判断质量有所下滑的学生，"
+                        "建议降低大额消费频率，重新验证预算方法"
                     )
                 elif learning_metrics.judgment_trend_direction == "up":
                     fit = (
-                        "适合有一定基础的投资者，近期判断质量持续改善，"
-                        "可以维持当前节奏"
+                        "适合有一定基础的学生，近期判断质量持续改善，"
+                        "可以维持当前复盘节奏"
                     )
 
         return UserFitSummary(fit=fit, unfit=unfit)
@@ -351,12 +350,12 @@ class AdaptationService:
             profile.experience_level == ExperienceLevel.NOVICE
             and profile.risk_tolerance == RiskTolerance.LOW
         ):
-            return "保守策略：强调风险控制，建议低仓位参与"
+            return "保守策略：强调预算安全垫，建议降低大额消费和分期依赖"
         elif (
             profile.experience_level == ExperienceLevel.EXPERT
             and profile.risk_tolerance == RiskTolerance.HIGH
             and profile.holding_horizon == HoldingHorizon.LONG
         ):
-            return "积极策略：关注长期价值，接受短期波动"
+            return "进阶策略：关注长期规划，接受适度阶段性支出"
         else:
-            return "平衡策略：综合考虑风险和收益，建议适度参与"
+            return "平衡策略：综合考虑预算、需求和风险，建议条件化决策"

@@ -15,7 +15,7 @@ from src.services.ai_eval_service import AiEvalService
 from src.services.entitlement_service import EntitlementService
 
 
-SHARE_DISCLAIMER = "本卡片仅用于展示风险教育和决策过程，不构成投资建议、收益承诺或买卖指令。"
+SHARE_DISCLAIMER = "本卡片仅用于展示校园金融素养成长、风险教育和决策过程，不构成投资建议、收益承诺、购买建议或借贷诱导。"
 SENSITIVE_KEYS = {"quantity", "cost_price", "current_price", "unrealized_pnl", "unrealized_pnl_rate", "transactions"}
 
 

@@ -72,7 +72,7 @@ export default function ReviewsPage() {
                   <div>
                     <h4 className="font-bold text-lg">{task.stock_name}</h4>
                     <p className="text-[10px] text-stone-400 uppercase tracking-widest mt-0.5">
-                      来源：{task.scenario === 'single_stock_check' ? '单股咨询' : task.scenario === 'pre_trade_check' ? '交易前自检' : '交易后复盘'}
+                      来源：{task.scenario === 'single_stock_check' ? '金融产品风险评估' : task.scenario === 'pre_trade_check' ? '消费决策自检' : '财务行为复盘'}
                     </p>
                   </div>
                   {isExpired ? (

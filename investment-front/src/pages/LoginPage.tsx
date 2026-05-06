@@ -63,11 +63,11 @@ export default function LoginPage() {
             </div>
             <div className="space-y-2">
               <p className="text-xs font-bold uppercase tracking-[0.28em] text-stone-400">
-                AI Investment Assistant
+                AI Financial Literacy Coach
               </p>
-              <h1 className="text-3xl font-bold tracking-tight text-stone-900">登录后继续使用</h1>
+              <h1 className="text-3xl font-bold tracking-tight text-stone-900">AI 金融素养教练</h1>
               <p className="text-sm leading-relaxed text-stone-500">
-                登录后即可查看实时股票搜索、分析记录、复盘任务和用户画像。
+                面向大学生的校园消费自检 Demo：登录后可体验小林分期买 5999 元手机、冷静期问题、决策卡和月底复盘；系统不会替你选择金融产品或安排借贷。
               </p>
             </div>
           </div>
@@ -115,7 +115,7 @@ export default function LoginPage() {
 
             {defaults.username && defaults.password && (
               <div className="rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-800">
-                当前本地开发环境已预填测试账号，可直接登录验证完整链路。
+                当前本地开发环境已预填测试账号，可直接登录验证完整主路径；Demo 使用模拟数据，未真实调用外部 PCG API。
               </div>
             )}
 

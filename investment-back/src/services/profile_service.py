@@ -26,12 +26,22 @@ logger = structlog.get_logger()
 # 判断质量分数字值映射（与前端 learningFeedback.ts 保持一致）
 JUDGMENT_SCORE_MAP = {
     "主要来自判断": 100,
+    "主要来自理性判断": 100,
     "部分判断 + 部分运气": 50,
+    "部分判断 + 部分情绪": 50,
     "主要来自运气": 0,
+    "主要来自情绪冲动": 0,
     # "难以区分" 单独处理，不写 judgment_score
 }
 
 BEHAVIOR_TAG_LABEL_MAP = {
+    # 校园金融素养标签（优先）
+    "盲目跟风": BehaviorTag.CHASING_RISE.value,
+    "冲动消费": BehaviorTag.CHASING_RISE.value,
+    "过度焦虑": BehaviorTag.PANIC_SELL.value,
+    "分期依赖": BehaviorTag.FREQUENT_TRADING.value,
+    "预算纪律稳定": BehaviorTag.STABLE_DISCIPLINE.value,
+    # 旧投资标签（向后兼容）
     "追涨倾向": BehaviorTag.CHASING_RISE.value,
     "恐慌卖出": BehaviorTag.PANIC_SELL.value,
     "频繁交易": BehaviorTag.FREQUENT_TRADING.value,

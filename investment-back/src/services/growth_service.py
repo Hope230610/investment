@@ -97,9 +97,9 @@ class GrowthService:
             value = item.behavior_type.value if hasattr(item.behavior_type, "value") else str(item.behavior_type)
             counter[value] += 1
         labels = {
-            "chasing_rise": "追涨触发后容易加快决策节奏",
-            "panic_sell": "下跌压力下容易放大退出冲动",
-            "frequent_trading": "近期交易频率信号偏高",
+            "chasing_rise": "同伴影响或促销信息触发后容易加快决策节奏",
+            "panic_sell": "预算压力或比较焦虑下容易放大冲动决策",
+            "frequent_trading": "近期大额消费或分期频率偏高",
         }
         return [labels.get(key, key) for key, count in counter.items() if count >= 1][:5]
 
@@ -125,13 +125,13 @@ class GrowthService:
         tendencies: list[str] = []
         valid_scores = [item.judgment_score for item in judgments if not item.is_hard_to_tell]
         if valid_scores and sum(valid_scores[:5]) / min(len(valid_scores), 5) < 50:
-            tendencies.append("近期判断质量自评偏低，新的结论需要降低默认置信度")
+            tendencies.append("近期判断质量自评偏低，新的消费决策需要降低默认置信度")
         if len([item for item in judgments if item.is_hard_to_tell]) >= 2:
-            tendencies.append("多次难以区分判断与运气，需要把可复用规则写得更具体")
+            tendencies.append("多次难以区分判断与运气，需要把可复用的决策规则写得更具体")
         if emotions and emotions[0].emotion_level >= 4:
-            tendencies.append("最近情绪评分偏高，交易前需要冷静期或延迟确认")
+            tendencies.append("最近情绪评分偏高，消费决策前需要冷静期或延迟确认")
         if len([item for item in emotions[:5] if item.emotion_level >= 4]) >= 2:
-            tendencies.append("高情绪记录重复出现，需重点检查是否被消息或涨跌幅触发")
+            tendencies.append("高情绪记录重复出现，需重点检查是否被促销信息或同伴影响触发")
         return tendencies[:5]
 
     def _build_caution_rules(
@@ -143,12 +143,12 @@ class GrowthService:
         rules: list[str] = []
         if repeated:
             rules.append("本次分析前先确认历史重复错误是否再次出现，若出现则降低结论置信度")
-        if any("追涨" in item for item in behavior_patterns):
-            rules.append("若触发原因来自连续上涨或热门消息，先补充反方证据再继续")
-        if any("下跌" in item for item in behavior_patterns):
-            rules.append("若触发原因来自亏损或急跌，先复核原始失效条件而不是只看回本压力")
+        if any("追涨" in item for item in behavior_patterns) or any("同伴" in item for item in behavior_patterns):
+            rules.append("若触发原因来自同伴影响、限时优惠或博主种草，先补充反方证据再继续")
+        if any("下跌" in item for item in behavior_patterns) or any("焦虑" in item for item in behavior_patterns):
+            rules.append("若触发原因来自预算压力或比较焦虑，先复核预算边界和真实需求而不是只看即时满足")
         if any("情绪" in item for item in risk_tendencies):
-            rules.append("情绪评分偏高时，至少等待一个市场更新周期后再复核")
+            rules.append("情绪评分偏高时，至少等待 48 小时冷静期后再复核")
         if any("判断质量" in item for item in risk_tendencies):
             rules.append("近期判断质量偏低时，输出必须保留不确定性和反方证据")
         if not rules:
@@ -157,11 +157,11 @@ class GrowthService:
 
     def _build_questions(self, caution_rules: list[str], risk_tendencies: list[str]) -> list[str]:
         questions = [
-            "这次判断的事实证据和模型推断是否已经分开记录？",
+            "这次判断的事实证据和个人推理是否已经分开记录？",
             "如果结论失效，最早会由哪个条件触发？",
         ]
         if any("情绪" in item for item in risk_tendencies):
-            questions.append("当前行动是否由情绪、亏损压力或短期涨跌触发？")
+            questions.append("当前行动是否由情绪、预算压力或同伴影响触发？")
         if caution_rules:
             questions.append("这次是否重复了历史上已经出现过的偏差？")
         return questions[:5]

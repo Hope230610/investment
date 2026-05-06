@@ -1,5 +1,5 @@
 /**
- * Playwright E2E tests for the Learning Feedback full user journey.
+ * Playwright E2E tests for the campus financial-literacy feedback journey.
  *
  * Prerequisites:
  *   npm install -D @playwright/test
@@ -9,32 +9,69 @@
  * Run:
  *   npx playwright test tests/e2e/learning-feedback.spec.ts
  *
- * These tests cover the complete feedback loop:
- *   post-trade-review submit → ResultPage feedback card →
+ * These tests cover the complete coach loop:
+ *   campus budget review submit → ResultPage feedback card →
  *   confirm/later/dismiss → DB verification → ProfilePage history
  */
 
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Page, type BrowserContext } from '@playwright/test';
 
 // ---------------------------------------------------------------------------
 // Test configuration (reads from environment)
 // ---------------------------------------------------------------------------
 
 const BASE_URL = process.env['E2E_BASE_URL'] ?? 'http://localhost:3000';
+const API_URL = process.env['E2E_API_URL'] ?? 'http://localhost:8000';
 const TEST_USER = process.env['E2E_USER'] ?? 'testuser';
 const TEST_PASS = process.env['E2E_PASS'] ?? 'testpassword123';
 const ACCESS_TOKEN_KEY = 'ai_investment_access_token';
+const CAMPUS_ITEM_ID = 'SZ000200';
+const CAMPUS_ITEM_NAME = '5999元手机分期';
+const E2E_RUN_ID = process.env['E2E_RUN_ID'] ?? `${Date.now()}-${process.pid}`;
+let authUserCounter = 0;
+const contextUsers = new WeakMap<BrowserContext, string>();
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 async function loginAs(page: Page) {
-  await page.goto(`${BASE_URL}/login`);
-  await page.getByPlaceholder('用户名').fill(TEST_USER);
-  await page.getByPlaceholder('密码').fill(TEST_PASS);
-  await page.getByRole('button', { name: '进入系统' }).click();
-  await page.waitForURL(url => !url.pathname.includes('login'));
+  let username = contextUsers.get(page.context());
+  if (!username) {
+    authUserCounter += 1;
+    username = `pwf_${authUserCounter}_${Math.random().toString(36).slice(2, 8)}_${TEST_USER}_${E2E_RUN_ID}`
+      .replace(/[^a-zA-Z0-9_-]/g, '_')
+      .slice(0, 50);
+    contextUsers.set(page.context(), username);
+  }
+
+  const registerResponse = await page.request.post(`${API_URL}/api/v1/user/register`, {
+    data: { username, password: TEST_PASS },
+  });
+  if (!registerResponse.ok() && registerResponse.status() !== 409) {
+    throw new Error(`E2E user registration failed: ${registerResponse.status()} ${await registerResponse.text()}`);
+  }
+
+  const loginResponse = registerResponse.status() === 409
+    ? await page.request.post(`${API_URL}/api/v1/user/login`, { data: { username, password: TEST_PASS } })
+    : registerResponse;
+  if (!loginResponse.ok()) {
+    throw new Error(`E2E user login failed: ${loginResponse.status()} ${await loginResponse.text()}`);
+  }
+
+  const body = await loginResponse.json() as { access_token: string; user?: unknown };
+  await page.goto(BASE_URL);
+  await page.evaluate(
+    ({ token, user }) => {
+      window.localStorage.setItem('ai_investment_access_token', token);
+      if (user) {
+        window.localStorage.setItem('ai_investment_user', JSON.stringify(user));
+      }
+      window.dispatchEvent(new Event('ai-investment-auth-change'));
+    },
+    { token: body.access_token, user: body.user ?? null },
+  );
+  await page.goto(`${BASE_URL}/`);
 }
 
 async function waitForFeedbackCard(page: Page, timeout = 3000) {
@@ -106,16 +143,16 @@ async function waitForAnalysisReady(page: Page, timeout = 60_000) {
 // Test: Learning Feedback Card — Confirm path
 // ---------------------------------------------------------------------------
 
-test('feedback card shows on post-trade-review result page', async ({ page }) => {
+test('feedback card shows after a campus budget review result page', async ({ page }) => {
   await loginAs(page);
 
-  await page.goto(`${BASE_URL}/analysis/post-trade?stock_id=SH600519&stock_name=贵州茅台`);
+  await page.goto(`${BASE_URL}/analysis/post-trade?stock_id=${CAMPUS_ITEM_ID}&stock_name=${encodeURIComponent(CAMPUS_ITEM_NAME)}`);
   await page.waitForLoadState('networkidle');
 
   // Submit the review form
-  await page.locator('input[placeholder*="买入"]').fill('continued');
-  await page.locator('textarea[placeholder*="价格变化"]').fill('E2E test outcome');
-  await page.getByRole('button', { name: /主要来自判断/i }).click();
+  await page.locator('input[placeholder*="暂缓购买"]').fill('暂缓购买手机分期，先保留生活费安全垫');
+  await page.locator('textarea[placeholder*="本月余额变化"]').fill('E2E 校园预算结果：没有透支，也找到了替代方案');
+  await page.getByRole('button', { name: /主要来自理性判断/i }).click();
   await page.getByRole('button', { name: /提交|submit/i }).click();
 
   // Should land on result page
@@ -139,16 +176,16 @@ test('feedback card shows on post-trade-review result page', async ({ page }) =>
 // Test: Confirm button writes to DB and closes card
 // ---------------------------------------------------------------------------
 
-test('confirm button writes learning feedback to DB', async ({ page }) => {
+test('confirm button writes campus learning feedback to DB', async ({ page }) => {
   await loginAs(page);
 
-  // Go to post-trade directly (bypass ReviewsPage for simpler path)
-  await page.goto(`${BASE_URL}/analysis/post-trade?stock_id=SH600519&stock_name=贵州茅台`);
+  // Go to review directly (bypass ReviewsPage for simpler path)
+  await page.goto(`${BASE_URL}/analysis/post-trade?stock_id=${CAMPUS_ITEM_ID}&stock_name=${encodeURIComponent(CAMPUS_ITEM_NAME)}`);
   await page.waitForLoadState('networkidle');
 
-  await page.locator('input[placeholder*="买入"]').fill('continued');
-  await page.locator('textarea[placeholder*="价格变化"]').fill('E2E confirm test');
-  await page.getByRole('button', { name: /主要来自判断/i }).click();
+  await page.locator('input[placeholder*="暂缓购买"]').fill('把手机预算从 5999 元降到 3000 元以内');
+  await page.locator('textarea[placeholder*="本月余额变化"]').fill('E2E confirm：保留了饭卡和交通预算');
+  await page.getByRole('button', { name: /主要来自理性判断/i }).click();
   await page.getByRole('button', { name: /提交|submit/i }).click();
 
   await page.waitForURL(url => url.pathname.includes('/result'));
@@ -188,16 +225,16 @@ test('confirm button writes learning feedback to DB', async ({ page }) => {
 // Test: Dismiss button permanently hides the card
 // ---------------------------------------------------------------------------
 
-test('dismiss button permanently hides feedback card', async ({ page }) => {
+test('dismiss button permanently hides feedback card for a campus review', async ({ page }) => {
   await loginAs(page);
 
-  // Use a fresh stock to avoid dismissed state
-  await page.goto(`${BASE_URL}/analysis/post-trade?stock_id=SZ002594&stock_name=比亚迪`);
+  // Each submitted review creates a fresh analysis id, so the dismiss key is isolated.
+  await page.goto(`${BASE_URL}/analysis/post-trade?stock_id=${CAMPUS_ITEM_ID}&stock_name=${encodeURIComponent(CAMPUS_ITEM_NAME)}`);
   await page.waitForLoadState('networkidle');
 
-  await page.locator('input[placeholder*="买入"]').fill('delayed');
-  await page.locator('textarea[placeholder*="价格变化"]').fill('E2E dismiss test');
-  await page.getByRole('button', { name: /部分判断.*部分运气/i }).click();
+  await page.locator('input[placeholder*="暂缓购买"]').fill('先不分期，等奖学金到账后再评估');
+  await page.locator('textarea[placeholder*="本月余额变化"]').fill('E2E dismiss：情绪下降，但仍想保留观察');
+  await page.getByRole('button', { name: /部分判断.*部分情绪/i }).click();
   await page.getByRole('button', { name: /提交|submit/i }).click();
 
   await page.waitForURL(url => url.pathname.includes('/result'));
@@ -224,15 +261,15 @@ test('dismiss button permanently hides feedback card', async ({ page }) => {
 // Test: Later button increments show count, card can reappear later
 // ---------------------------------------------------------------------------
 
-test('later button increments show count, card reappears on next review', async ({ page }) => {
+test('later button increments show count, card reappears on next campus review', async ({ page }) => {
   await loginAs(page);
 
-  await page.goto(`${BASE_URL}/analysis/post-trade?stock_id=SZ300750&stock_name=宁德时代`);
+  await page.goto(`${BASE_URL}/analysis/post-trade?stock_id=${CAMPUS_ITEM_ID}&stock_name=${encodeURIComponent(CAMPUS_ITEM_NAME)}`);
   await page.waitForLoadState('networkidle');
 
-  await page.locator('input[placeholder*="买入"]').fill('cancelled');
-  await page.locator('textarea[placeholder*="价格变化"]').fill('E2E later test');
-  await page.getByRole('button', { name: /主要来自运气/i }).click();
+  await page.locator('input[placeholder*="暂缓购买"]').fill('取消当天分期下单');
+  await page.locator('textarea[placeholder*="本月余额变化"]').fill('E2E later：主要是被博主种草带动');
+  await page.getByRole('button', { name: /主要来自情绪冲动/i }).click();
   await page.getByRole('button', { name: /提交|submit/i }).click();
 
   await page.waitForURL(url => url.pathname.includes('/result'));
@@ -249,11 +286,11 @@ test('later button increments show count, card reappears on next review', async 
     await expect(card).toHaveCount(0);
 
     // On a second review, card should still appear (< 3 shows)
-    await page.goto(`${BASE_URL}/analysis/post-trade?stock_id=SH600036&stock_name=招商银行`);
+    await page.goto(`${BASE_URL}/analysis/post-trade?stock_id=${CAMPUS_ITEM_ID}&stock_name=${encodeURIComponent(CAMPUS_ITEM_NAME)}`);
     await page.waitForLoadState('networkidle');
-    await page.locator('input[placeholder*="买入"]').fill('continued');
-    await page.locator('textarea[placeholder*="价格变化"]').fill('Second review');
-    await page.getByRole('button', { name: /主要来自判断/i }).click();
+    await page.locator('input[placeholder*="暂缓购买"]').fill('第二次复盘：继续保留预算上限');
+    await page.locator('textarea[placeholder*="本月余额变化"]').fill('Second campus review：替代方案满足上课需求');
+    await page.getByRole('button', { name: /主要来自理性判断/i }).click();
     await page.getByRole('button', { name: /提交|submit/i }).click();
     await page.waitForURL(url => url.pathname.includes('/result'));
     await waitForAnalysisReady(page);

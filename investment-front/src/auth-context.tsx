@@ -46,8 +46,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const bootstrap = async () => {
       const session = readAuthSession();
       if (!session?.accessToken) {
-        if (!cancelled) {
-          setIsBootstrapping(false);
+        // 无 token 时自动创建访客账号并登录
+        try {
+          const guestResponse = await apiPost<LoginResponse>(
+            '/api/v1/user/guest',
+            {},
+            { auth: false },
+          );
+          if (cancelled) return;
+          saveAuthSession({
+            accessToken: guestResponse.access_token,
+            user: guestResponse.user,
+          });
+          setToken(guestResponse.access_token);
+          setUser(guestResponse.user);
+        } catch {
+          // 访客登录失败时静默处理，用户可手动登录
+        } finally {
+          if (!cancelled) setIsBootstrapping(false);
         }
         return;
       }

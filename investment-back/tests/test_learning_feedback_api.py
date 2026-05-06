@@ -234,6 +234,16 @@ VALID_FEEDBACK_PAYLOAD = {
     "trigger_reason": "连续上涨",
 }
 
+CAMPUS_FEEDBACK_PAYLOAD = {
+    **VALID_FEEDBACK_PAYLOAD,
+    "tag_updates": [
+        {"tag": "盲目跟风", "type": "add", "source": "校园预算复盘确认"}
+    ],
+    "judgment_quality": "主要来自理性判断",
+    "intent": "purchase",
+    "trigger_reason": "同学都换新机",
+}
+
 
 @pytest.mark.asyncio
 async def test_post_learning_feedback_accepts_valid_payload(client, auth_headers, db_engine):
@@ -243,6 +253,18 @@ async def test_post_learning_feedback_accepts_valid_payload(client, auth_headers
         "/api/v1/user/profile/learning-feedback",
         headers=auth_headers,
         json=VALID_FEEDBACK_PAYLOAD,
+    )
+    assert resp.status_code == 200, resp.text
+
+
+@pytest.mark.asyncio
+async def test_post_learning_feedback_accepts_campus_coach_labels(client, auth_headers, db_engine):
+    with db_engine.begin() as conn:
+        ensure_analysis_task_fixture(conn)
+    resp = await client.post(
+        "/api/v1/user/profile/learning-feedback",
+        headers=auth_headers,
+        json=CAMPUS_FEEDBACK_PAYLOAD,
     )
     assert resp.status_code == 200, resp.text
 

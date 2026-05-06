@@ -15,7 +15,7 @@ logger = structlog.get_logger()
 @dataclass
 class InterventionContext:
     """干预上下文"""
-    intent: Optional[str] = None  # buy, sell, add, reduce
+    intent: Optional[str] = None  # purchase, delay, reduce_budget, review; legacy: buy, sell, add, reduce
     trigger_reason: Optional[str] = None
     emotion_level: Optional[int] = None
     scenario: Optional[str] = None
@@ -38,19 +38,19 @@ class InterventionService:
         """
         self.logger.info("checking_intervention", context=str(context))
 
-        # 追涨检测
+        # 冲动消费 / 盲目跟风检测
         if self._is_chasing_rise(context, user_profile):
-            self.logger.info("intervention_triggered", type="chasing_rise")
+            self.logger.info("intervention_triggered", type="impulsive_consumption")
             return self._create_chasing_rise_intervention(user_profile)
 
-        # 恐慌卖出检测
+        # 过度焦虑检测
         if self._is_panic_sell(context, user_profile):
-            self.logger.info("intervention_triggered", type="panic_sell")
+            self.logger.info("intervention_triggered", type="anxiety_spending")
             return self._create_panic_sell_intervention(user_profile)
 
-        # 频繁交易检测
+        # 分期依赖 / 高频大额决策检测
         if self._is_frequent_trading(context, user_profile):
-            self.logger.info("intervention_triggered", type="frequent_trading")
+            self.logger.info("intervention_triggered", type="installment_dependency")
             return self._create_frequent_trading_intervention(user_profile)
 
         # 情绪冲动检测
@@ -62,93 +62,89 @@ class InterventionService:
         return None
 
     def _is_chasing_rise(self, context: InterventionContext, profile: UserProfile) -> bool:
-        """检测追涨倾向"""
-        # 触发条件1：交易意图是买入/加仓，且触发原因是连续上涨
+        """检测冲动消费或盲目跟风倾向"""
         if (
-            context.intent in ['buy', 'add']
-            and context.trigger_reason == '连续上涨'
+            context.intent in ['purchase', 'buy', 'add']
+            and context.trigger_reason in ['同学都换新机', '限时优惠', '博主种草', '连续上涨']
         ):
             return True
 
-        # 触发条件2：用户有追涨标签
+        # 兼容旧标签：chasing_rise 在比赛版本展示为盲目跟风
         if BehaviorTag.CHASING_RISE in profile.behavior_tags:
-            if context.intent in ['buy', 'add']:
+            if context.intent in ['purchase', 'buy', 'add']:
                 return True
 
         return False
 
     def _is_panic_sell(self, context: InterventionContext, profile: UserProfile) -> bool:
-        """检测恐慌卖出倾向"""
-        # 触发条件1：交易意图是卖出/减仓，且触发原因是快速下跌
+        """检测过度焦虑导致的仓促决策"""
         if (
-            context.intent in ['sell', 'reduce']
-            and context.trigger_reason == '快速下跌'
+            context.intent in ['delay', 'review', 'sell', 'reduce']
+            and context.trigger_reason in ['旧设备损坏', '快速下跌']
         ):
             return True
 
-        # 触发条件2：用户有恐慌卖出标签
+        # 兼容旧标签：panic_sell 在比赛版本展示为过度焦虑
         if BehaviorTag.PANIC_SELL in profile.behavior_tags:
-            if context.intent in ['sell', 'reduce']:
+            if context.intent in ['delay', 'review', 'sell', 'reduce']:
                 return True
 
         return False
 
     def _is_frequent_trading(self, context: InterventionContext, profile: UserProfile) -> bool:
-        """检测频繁交易倾向"""
-        # 用户有频繁交易标签
+        """检测分期依赖或高频大额决策倾向"""
         if BehaviorTag.FREQUENT_TRADING in profile.behavior_tags:
-            # 检查最近的分析记录（模拟）
             if context.recent_analyses and len(context.recent_analyses) >= 5:
                 return True
 
         return False
 
     def _create_chasing_rise_intervention(self, profile: UserProfile) -> BehaviorIntervention:
-        """创建追涨干预"""
+        """创建冲动消费 / 盲目跟风干预"""
         questions = [
-            "这次上涨有实质性的基本面支撑吗？还是只是短期情绪推动？",
-            "我是否是因为 '害怕错过' 而想买入？",
-            "如果现在下跌 10%，我能否接受？",
-            "我有明确的止损和止盈计划吗？",
-            "能否先等 24 小时，观察市场情况再做决定？"
+            "如果不能分期，你是否仍然愿意购买？",
+            "这次购买是学习生活刚需，还是因为同伴影响和害怕落后？",
+            "这笔支出是否已经超过本月可支配预算的安全线？",
+            "是否存在 3000 元以内、也能满足核心需求的替代方案？",
+            "能否先等 48 小时，冷静后再重新评估？"
         ]
 
         if profile.risk_tolerance == RiskTolerance.LOW:
-            questions.append("考虑到您的风险承受能力，建议等待更明确的信号")
+            questions.append("考虑到你的财务风险承受能力，建议保留至少一个月生活费安全垫")
 
         return BehaviorIntervention(
-            behavior_type="chasing_rise",
+            behavior_type="impulsive_consumption",
             severity="high",
             questions=questions
         )
 
     def _create_panic_sell_intervention(self, profile: UserProfile) -> BehaviorIntervention:
-        """创建恐慌卖出干预"""
+        """创建过度焦虑干预"""
         questions = [
-            "这一下跌是否影响了公司的长期基本面？",
-            "我卖出是因为恐惧，还是基于理性判断？",
-            "如果我现在卖出，是否会在更高价位买回来？",
-            "这次下跌是否符合我之前的预期和计划？",
-            "能否先深呼吸，冷静 10 分钟再重新考虑？"
+            "这次焦虑来自真实需求，还是来自短期压力和比较？",
+            "如果今天不做决定，会造成不可逆后果吗？",
+            "是否可以先列出必要功能，再判断是否必须购买当前价位产品？",
+            "本月预算是否允许这笔支出，不影响餐饮、交通和学习基本开销？",
+            "能否先冷静 30 分钟，再重新填写判断理由？"
         ]
 
         return BehaviorIntervention(
-            behavior_type="panic_sell",
+            behavior_type="anxiety_spending",
             severity="high",
             questions=questions
         )
 
     def _create_frequent_trading_intervention(self, profile: UserProfile) -> BehaviorIntervention:
-        """创建频繁交易干预"""
+        """创建分期依赖干预"""
         questions = [
-            "我之前的交易都实现了预期的目标吗？",
-            "频繁交易导致的摩擦成本（手续费、税费）对我的收益影响有多大？",
-            "能否设定一个交易频率限制，比如每月最多交易 N 次？",
-            "这只股票我准备持有多久？有没有明确的持有周期？"
+            "过去三个月是否已经有多笔分期或大额消费？",
+            "分期是否让你低估了总价、手续费和逾期成本？",
+            "能否设定一个大额消费频率限制，例如每月最多一次？",
+            "这笔购买是否会挤压必要生活费或应急金？"
         ]
 
         return BehaviorIntervention(
-            behavior_type="frequent_trading",
+            behavior_type="installment_dependency",
             severity="medium",
             questions=questions
         )
@@ -158,14 +154,14 @@ class InterventionService:
         if emotion_level == 5:
             severity = "high"
             questions = [
-                "请立刻暂停操作，先做一些别的事情转移注意力",
-                "您当前处于高度情绪化状态，建议至少等待 1 小时后再做决定"
+                "请立刻暂停本次消费决策，先做一些别的事情转移注意力",
+                "你当前处于高度情绪化状态，建议至少等待 48 小时后再做决定"
             ]
         else:
             severity = "medium"
             questions = [
-                "您当前情绪有一定波动，建议先冷静几分钟",
-                "能否把决策写下来，分析利弊后再做决定？"
+                "你当前情绪有一定波动，建议先冷静几分钟",
+                "能否把预算影响和替代方案写下来，再做决定？"
             ]
 
         return BehaviorIntervention(
@@ -183,9 +179,12 @@ class InterventionService:
         }
 
         type_map = {
-            "chasing_rise": "追涨倾向",
-            "panic_sell": "恐慌卖出倾向",
-            "frequent_trading": "频繁交易倾向",
+            "chasing_rise": "盲目跟风",
+            "panic_sell": "过度焦虑",
+            "frequent_trading": "分期依赖",
+            "impulsive_consumption": "冲动消费",
+            "anxiety_spending": "过度焦虑",
+            "installment_dependency": "分期依赖",
             "emotional_impulse": "情绪冲动"
         }
 

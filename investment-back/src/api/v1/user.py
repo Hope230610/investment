@@ -1,3 +1,5 @@
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
@@ -121,6 +123,53 @@ async def register(
     user_with_profile = service.get_user_with_profile(new_user.id)
 
     logger.info("register_success", user_id=new_user.id)
+
+    return LoginResponse(
+        access_token=access_token,
+        token_type="bearer",
+        user=user_with_profile,
+    )
+
+
+@router.post("/guest", response_model=LoginResponse)
+async def guest_login(
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """访客自动注册并登录（无需手动输入用户名密码）"""
+    short_id = uuid.uuid4().hex[:8]
+    guest_username = f"guest_{short_id}"
+    guest_password = uuid.uuid4().hex[:16]
+
+    new_user = User(username=guest_username)
+    new_user.set_password(guest_password)
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+
+    from src.models.user import UserProfile, ExperienceLevel, HoldingHorizon, RiskTolerance
+
+    new_profile = UserProfile(
+        user_id=new_user.id,
+        experience_level=ExperienceLevel.NOVICE,
+        holding_horizon=HoldingHorizon.MEDIUM,
+        risk_tolerance=RiskTolerance.MEDIUM,
+        behavior_tags=[],
+    )
+    db.add(new_profile)
+    db.commit()
+    db.refresh(new_profile)
+
+    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": str(new_user.id)},
+        expires_delta=access_token_expires,
+    )
+
+    service = get_user_service(db)
+    user_with_profile = service.get_user_with_profile(new_user.id)
+
+    logger.info("guest_login_success", user_id=new_user.id)
 
     return LoginResponse(
         access_token=access_token,

@@ -11,22 +11,22 @@ export function cn(...inputs: ClassValue[]) {
 
 export const SCENARIOS = {
   single_stock_check: {
-    title: '单股咨询',
-    description: '值得继续关注吗',
+    title: '金融产品风险评估',
+    description: '拆解夸张宣传和真实风险',
     icon: 'Search',
     color: 'bg-blue-50 text-blue-600',
     path: '/analysis/single-stock',
   },
   pre_trade_check: {
-    title: '交易前自检',
-    description: '检查情绪和触发逻辑',
+    title: '消费决策自检',
+    description: '分期、大额消费前先慢下来',
     icon: 'ShieldCheck',
     color: 'bg-emerald-50 text-emerald-600',
     path: '/analysis/pre-trade',
   },
   post_trade_review: {
-    title: '交易后复盘',
-    description: '复盘执行和判断质量',
+    title: '财务行为复盘',
+    description: '复盘超支和行为模式',
     icon: 'History',
     color: 'bg-amber-50 text-amber-700',
     path: '/analysis/post-trade',
@@ -35,15 +35,15 @@ export const SCENARIOS = {
 
 
 export const EXPERIENCE_LEVELS = [
-  { value: 'novice', label: '新手' },
-  { value: 'intermediate', label: '中级' },
-  { value: 'expert', label: '有体系投资者' },
+  { value: 'novice', label: '大一新生 / 初学者' },
+  { value: 'intermediate', label: '有兼职收入学生' },
+  { value: 'expert', label: '研究生 / 有规划经验' },
 ];
 
 export const HOLDING_HORIZONS = [
-  { value: 'short', label: '短期' },
-  { value: 'medium', label: '中期' },
-  { value: 'long', label: '长期' },
+  { value: 'short', label: '本月内' },
+  { value: 'medium', label: '本学期' },
+  { value: 'long', label: '一年以上' },
 ];
 
 export const RISK_TOLERANCES = [
@@ -53,15 +53,15 @@ export const RISK_TOLERANCES = [
 ];
 
 export const BEHAVIOR_TAGS = [
-  { value: 'chasing_rise', label: '追涨倾向' },
-  { value: 'panic_sell', label: '恐慌卖出倾向' },
-  { value: 'frequent_trading', label: '频繁交易' },
-  { value: 'stable_discipline', label: '纪律稳定' },
+  { value: 'chasing_rise', label: '盲目跟风' },
+  { value: 'panic_sell', label: '过度焦虑' },
+  { value: 'frequent_trading', label: '分期依赖' },
+  { value: 'stable_discipline', label: '预算纪律稳定' },
 ];
 
 
 export const STORAGE_KEYS = {
-  FOCUS_REASONS: 'ai_investment_focus_reasons',
+  FOCUS_REASONS: 'ai_financial_literacy_focus_reasons',
 };
 
 

@@ -62,10 +62,10 @@ export interface LearningFeedbackData {
 
 const levelColors: Record<JudgmentQualityLevel, { bg: string; text: string; border: string; dot: string; label: string }> = {
   high: {
-    bg: 'bg-emerald-50',
-    text: 'text-emerald-700',
-    border: 'border-emerald-200',
-    dot: 'bg-emerald-500',
+    bg: 'bg-mist',
+    text: 'text-teal-700',
+    border: 'border-teal-100',
+    dot: 'bg-teal-600',
     label: '判断非常稳健，风险控制良好',
   },
   medium: {
@@ -76,11 +76,11 @@ const levelColors: Record<JudgmentQualityLevel, { bg: string; text: string; bord
     label: '判断基本可靠，存在一定情绪干扰',
   },
   low: {
-    bg: 'bg-red-50',
-    text: 'text-red-700',
-    border: 'border-red-200',
-    dot: 'bg-red-500',
-    label: '判断受运气影响较大，建议减少交易频率',
+    bg: 'bg-rose-50',
+    text: 'text-rose-700',
+    border: 'border-rose-100',
+    dot: 'bg-rose-500',
+    label: '判断受情绪影响较大，建议减少大额分期和冲动消费频率',
   },
 };
 
@@ -133,7 +133,7 @@ export function EmotionSparkline({ data, currentLevel, mean }: EmotionSparklineP
   const isAboveMean = currentLevel > mean;
   const warnIcon = isAboveMean ? '↑' : '↓';
   const warnLabel = isAboveMean ? '略高于均值' : '低于均值';
-  const warnColor = isAboveMean ? 'text-amber-600' : 'text-emerald-600';
+  const warnColor = isAboveMean ? 'text-amber-600' : 'text-teal-700';
 
   return (
     <div className="space-y-2">
@@ -156,8 +156,8 @@ export function EmotionSparkline({ data, currentLevel, mean }: EmotionSparklineP
         {/* Area fill */}
         <defs>
           <linearGradient id="sparkGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.2} />
-            <stop offset="100%" stopColor="#3b82f6" stopOpacity={0.02} />
+            <stop offset="0%" stopColor="#0f766e" stopOpacity={0.18} />
+            <stop offset="100%" stopColor="#0f766e" stopOpacity={0.02} />
           </linearGradient>
         </defs>
         <polygon
@@ -168,7 +168,7 @@ export function EmotionSparkline({ data, currentLevel, mean }: EmotionSparklineP
         <polyline
           points={polyline}
           fill="none"
-          stroke="#3b82f6"
+          stroke="#0f766e"
           strokeWidth={1.5}
           strokeLinejoin="round"
           strokeLinecap="round"
@@ -178,7 +178,7 @@ export function EmotionSparkline({ data, currentLevel, mean }: EmotionSparklineP
           cx={lastX}
           cy={lastY}
           r={3.5}
-          fill="#3b82f6"
+          fill="#0f766e"
           stroke="white"
           strokeWidth={1.5}
         />
@@ -188,7 +188,7 @@ export function EmotionSparkline({ data, currentLevel, mean }: EmotionSparklineP
           y={lastY - 6}
           textAnchor="middle"
           fontSize={8}
-          fill="#3b82f6"
+          fill="#0f766e"
           fontWeight="600"
         >
           本次
@@ -245,8 +245,8 @@ function TrendBadge({ trend }: { trend: JudgmentTrend }) {
     stable: <Minus size={12} />,
   };
   const colors = {
-    up: 'text-emerald-600 bg-emerald-50',
-    down: 'text-red-600 bg-red-50',
+    up: 'text-teal-700 bg-mist',
+    down: 'text-rose-700 bg-rose-50',
     stable: 'text-stone-500 bg-stone-100',
   };
   return (
@@ -260,9 +260,9 @@ function TrendBadge({ trend }: { trend: JudgmentTrend }) {
 // ─── Tag Update Row ────────────────────────────────────────────────────────────
 
 const tagColors: Record<TagUpdate['type'], { bg: string; text: string; icon: string }> = {
-  add: { bg: 'bg-emerald-50', text: 'text-emerald-700', icon: '+' },
+  add: { bg: 'bg-mist', text: 'text-teal-700', icon: '+' },
   remove: { bg: 'bg-stone-100', text: 'text-stone-500', icon: '−' },
-  upgrade: { bg: 'bg-blue-50', text: 'text-blue-700', icon: '↑' },
+  upgrade: { bg: 'bg-amber-50', text: 'text-amber-700', icon: '↑' },
 };
 
 function TagUpdateRow({ update, index }: { update: TagUpdate; index: number }) {
@@ -330,7 +330,7 @@ export default function LearningFeedbackCard({
             animate={{ y: 0 }}
             exit={{ y: '100%' }}
             transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-            className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white rounded-t-[28px] z-50 safe-bottom"
+            className="safe-bottom fixed bottom-0 left-1/2 z-50 w-full max-w-lg -translate-x-1/2 rounded-t-[28px] bg-white"
             role="dialog"
             aria-modal="true"
             aria-label="学习反馈"
@@ -341,13 +341,13 @@ export default function LearningFeedbackCard({
             </div>
 
             {/* Header */}
-            <div className="px-6 pb-4 flex items-center gap-3 border-b border-stone-100">
-              <div className="w-9 h-9 bg-ink rounded-xl flex items-center justify-center shrink-0">
+            <div className="flex items-start gap-3 border-b border-stone-100 px-6 pb-4">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-teal-700">
                 <Activity size={18} className="text-white" />
               </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h2 className="text-lg font-bold text-stone-900">本次复盘 · 系统学到了这些</h2>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-base font-bold leading-snug text-stone-900">本次复盘 · 系统学到了这些</h2>
                   {showCount > 0 && (
                     <span className="px-1.5 py-0.5 bg-amber-50 border border-amber-200 rounded-full text-[10px] font-bold text-amber-600">
                       第{showCount + 1}次展示
@@ -427,7 +427,7 @@ export default function LearningFeedbackCard({
                           {data.judgmentQualityDelta !== 0 && !data.judgmentTrend.insufficient && (
                             <span className={cn(
                               'text-sm font-semibold',
-                              data.judgmentQualityDelta > 0 ? 'text-emerald-600' : 'text-red-600'
+                              data.judgmentQualityDelta > 0 ? 'text-teal-700' : 'text-rose-700'
                             )}>
                               {data.judgmentQualityDelta > 0 ? '+' : ''}{data.judgmentQualityDelta}%
                             </span>
@@ -456,9 +456,9 @@ export default function LearningFeedbackCard({
                           const max = Math.max(b.mainlyJudgment, b.partialJudgment, b.mainlyLuck, b.hardToTell);
                           return (
                             <>
-                              <JudgmentBar label="主要来自判断" value={b.mainlyJudgment} maxValue={max} color="bg-blue-500" />
+                              <JudgmentBar label="主要来自判断" value={b.mainlyJudgment} maxValue={max} color="bg-teal-600" />
                               <JudgmentBar label="部分判断+运气" value={b.partialJudgment} maxValue={max} color="bg-amber-400" />
-                              <JudgmentBar label="主要来自运气" value={b.mainlyLuck} maxValue={max} color="bg-red-400" />
+                              <JudgmentBar label="主要来自运气" value={b.mainlyLuck} maxValue={max} color="bg-rose-400" />
                               <JudgmentBar label="难以区分" value={b.hardToTell} maxValue={max} color="bg-stone-300" />
                             </>
                           );
@@ -490,12 +490,12 @@ export default function LearningFeedbackCard({
 
               {/* 建议 */}
               {data && data.suggestion && (
-                <section className="bg-blue-50 border border-blue-100 rounded-2xl p-4">
+                <section className="rounded-2xl border border-teal-100 bg-mist p-4">
                   <div className="flex items-start gap-2">
-                    <Lightbulb size={16} className="text-blue-500 shrink-0 mt-0.5" />
+                    <Lightbulb size={16} className="mt-0.5 shrink-0 text-teal-700" />
                     <div>
-                      <div className="text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-1">建议</div>
-                      <p className="text-xs text-blue-800 leading-relaxed">{data.suggestion}</p>
+                      <div className="mb-1 text-[10px] font-bold uppercase tracking-widest text-teal-700">建议</div>
+                      <p className="text-xs leading-relaxed text-teal-950">{data.suggestion}</p>
                     </div>
                   </div>
                 </section>
@@ -535,7 +535,7 @@ export default function LearningFeedbackCard({
                 <button
                   onClick={onConfirm}
                   disabled={loading}
-                  className="flex-[2] py-3 bg-ink text-white rounded-2xl font-bold text-sm hover:bg-stone-800 transition-colors disabled:opacity-40 flex items-center justify-center gap-2 active:scale-[0.98]"
+                  className="flex-[2] py-3 bg-teal-700 text-white rounded-2xl font-bold text-sm hover:bg-teal-800 transition-colors disabled:opacity-40 flex items-center justify-center gap-2 active:scale-[0.98]"
                 >
                   {loading ? (
                     <>

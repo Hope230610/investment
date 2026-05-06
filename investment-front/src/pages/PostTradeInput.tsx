@@ -8,10 +8,10 @@ import type { ReviewFormData } from '../utils/learningFeedback';
 
 
 const behaviorPatternOptions = [
-  '追涨倾向',
-  '恐慌卖出',
-  '频繁交易',
-  '纪律稳定',
+  '冲动消费',
+  '盲目跟风',
+  '分期依赖',
+  '预算纪律稳定',
   '计划执行偏差',
   '情绪主导决策',
 ];
@@ -86,12 +86,12 @@ export default function PostTradeInput() {
   return (
     <div className="p-4 space-y-8 pb-32">
       <div className="space-y-2">
-        <h2 className="text-2xl font-bold tracking-tight">交易后复盘</h2>
-        <p className="text-sm text-stone-400">把这次决策拆开看清楚，留下能重复的部分，剔除运气和情绪。</p>
+        <h2 className="text-2xl font-bold tracking-tight">财务行为复盘</h2>
+        <p className="text-sm text-stone-400">把这次消费或预算决策拆开看清楚，留下可重复的判断方法，剔除冲动和攀比。</p>
       </div>
 
       <section className="space-y-3">
-        <label className="text-sm font-bold uppercase tracking-widest text-stone-400">选择股票</label>
+        <label className="text-sm font-bold uppercase tracking-widest text-stone-400">复盘对象</label>
         <button
           onClick={() => navigate('/stock/search?callback=/analysis/post-trade')}
           className="w-full p-4 bg-white border border-stone-200 rounded-2xl flex items-center justify-between"
@@ -104,7 +104,7 @@ export default function PostTradeInput() {
           ) : (
             <div className="flex items-center gap-2 text-stone-400">
               <Search size={18} />
-              <span className="text-sm">点击搜索 A 股标的</span>
+              <span className="text-sm">选择决策对象或预算事项</span>
             </div>
           )}
           <ChevronRight size={18} className="text-stone-300" />
@@ -112,10 +112,10 @@ export default function PostTradeInput() {
       </section>
 
       <section className="space-y-3">
-        <label className="text-sm font-bold uppercase tracking-widest text-stone-400">实际操作</label>
+        <label className="text-sm font-bold uppercase tracking-widest text-stone-400">实际行动</label>
         <input
           type="text"
-          placeholder="例如：在 25.6 元买入 30%，或者跌破计划位后减仓"
+          placeholder="例如：暂缓购买 5999 元手机，或改看 3000 元以内替代方案"
           className="w-full bg-white border border-stone-200 rounded-xl p-4 text-sm focus:ring-2 focus:ring-ink"
           value={action}
           onChange={(event) => setAction(event.target.value)}
@@ -125,7 +125,7 @@ export default function PostTradeInput() {
       <section className="space-y-3">
         <label className="text-sm font-bold uppercase tracking-widest text-stone-400">后续结果</label>
         <textarea
-          placeholder="记录价格变化、盈亏状态、持仓心态，或者你觉得这次做得好的/不好的地方"
+          placeholder="记录本月余额变化、是否仍想购买、有没有找到替代方案，以及这次做得好的/不好的地方"
           className="w-full bg-white border border-stone-200 rounded-2xl p-4 text-sm h-28 focus:ring-2 focus:ring-ink resize-none"
           value={outcome}
           onChange={(event) => setOutcome(event.target.value)}
@@ -157,9 +157,9 @@ export default function PostTradeInput() {
       </section>
 
       <section className="space-y-3">
-        <label className="text-sm font-bold uppercase tracking-widest text-stone-400">判断质量 vs 运气</label>
+        <label className="text-sm font-bold uppercase tracking-widest text-stone-400">判断质量 vs 情绪</label>
         <div className="flex flex-wrap gap-2">
-          {['主要来自判断', '部分判断 + 部分运气', '主要来自运气', '难以区分'].map((option) => (
+          {['主要来自理性判断', '部分判断 + 部分情绪', '主要来自情绪冲动', '难以区分'].map((option) => (
             <button
               key={option}
               onClick={() => setJudgementQuality(option)}
@@ -223,7 +223,7 @@ export default function PostTradeInput() {
       <div className="bg-amber-50 border border-amber-100 p-4 rounded-2xl flex gap-3 items-start">
         <AlertCircle size={18} className="text-amber-500 shrink-0 mt-0.5" />
         <p className="text-xs text-amber-800 leading-relaxed">
-          复盘的重点不是证明这次盈亏对不对，而是确认你下次还该不该重复同样的动作。
+          复盘的重点不是证明这次花没花对，而是确认下次遇到同类消费时，能不能更早看见风险。
         </p>
       </div>
 

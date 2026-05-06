@@ -1,6 +1,6 @@
-# AI投资决策助手 - 后端
+# AI 金融素养教练 - 后端
 
-> AI投资决策助手系统的Python后端服务
+> 面向大学生的校园金融素养与决策辅助产品后端服务
 
 ## 技术栈
 
@@ -106,9 +106,9 @@ uvicorn main:app --reload --host 0.0.0.0 --port 8000
 - `GET /api/v1/analysis/{id}` - 获取分析结果
 - `GET /api/v1/records` - 获取分析记录列表
 
-### 股票相关
-- `GET /api/v1/stocks/search?q=` - 搜索股票
-- `GET /api/v1/stocks/{id}` - 获取股票详情
+### 金融产品风险评估
+- `GET /api/v1/stocks/search?q=` - 搜索金融产品
+- `GET /api/v1/stocks/{id}` - 获取金融产品详情
 
 ### 观察列表
 - `GET /api/v1/watchlist` - 获取观察列表

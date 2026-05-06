@@ -205,17 +205,17 @@ export default function ProfilePage() {
   return (
     <div className="p-4 space-y-8">
       <div className="space-y-2">
-        <h2 className="text-2xl font-bold tracking-tight">用户画像配置</h2>
+        <h2 className="text-2xl font-bold tracking-tight">学生财务画像配置</h2>
         <div className="bg-blue-50 p-3 rounded-xl flex gap-2 items-start">
           <Info size={16} className="text-blue-500 shrink-0 mt-0.5" />
           <p className="text-xs text-blue-700 leading-relaxed">
-            用户画像只用于调整解释方式、风险提示和下一步建议，不会改写股票本身的事实判断。
+            学生财务画像只用于调整解释方式、风险提示和下一步建议，不会替你做购买、借贷或投资决定。
           </p>
         </div>
       </div>
 
       <section className="space-y-3">
-        <label className="text-sm font-bold uppercase tracking-widest text-stone-400">投资经验</label>
+        <label className="text-sm font-bold uppercase tracking-widest text-stone-400">金融素养阶段</label>
         <div className="grid grid-cols-1 gap-2">
           {EXPERIENCE_LEVELS.map((option) => (
             <button
@@ -236,7 +236,7 @@ export default function ProfilePage() {
       </section>
 
       <section className="space-y-3">
-        <label className="text-sm font-bold uppercase tracking-widest text-stone-400">持有周期</label>
+        <label className="text-sm font-bold uppercase tracking-widest text-stone-400">规划周期</label>
         <div className="flex bg-stone-100 p-1 rounded-xl">
           {HOLDING_HORIZONS.map((option) => (
             <button

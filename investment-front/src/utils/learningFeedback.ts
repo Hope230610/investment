@@ -18,8 +18,11 @@ import type {
 
 const JUDGMENT_SCORE: Record<string, number> = {
   '主要来自判断': 100,
+  '主要来自理性判断': 100,
   '部分判断 + 部分运气': 50,
+  '部分判断 + 部分情绪': 50,
   '主要来自运气': 0,
+  '主要来自情绪冲动': 0,
   '难以区分': -1, // excluded from calculation
 };
 
@@ -30,12 +33,22 @@ const JUDGMENT_BREAKDOWN_PCT = {
   '难以区分': 5,
 };
 
-function normalizeIntent(value?: string | null): 'buy' | 'sell' | 'add' | 'reduce' | undefined {
+function normalizeJudgementQuality(value: string): keyof typeof JUDGMENT_BREAKDOWN_PCT | null {
+  if (value === '主要来自理性判断') return '主要来自判断';
+  if (value === '部分判断 + 部分情绪') return '部分判断 + 部分运气';
+  if (value === '主要来自情绪冲动') return '主要来自运气';
+  if (value in JUDGMENT_BREAKDOWN_PCT) return value as keyof typeof JUDGMENT_BREAKDOWN_PCT;
+  return null;
+}
+
+function normalizeIntent(value?: string | null): 'buy' | 'sell' | 'add' | 'reduce' | 'delay' | 'review' | undefined {
   const normalized = value?.trim().toLowerCase();
   if (!normalized) return undefined;
   if (normalized === 'add_position') return 'add';
   if (normalized === 'reduce_position') return 'reduce';
-  if (normalized === 'buy' || normalized === 'sell' || normalized === 'add' || normalized === 'reduce') {
+  if (normalized === 'purchase') return 'buy';
+  if (normalized === 'reduce_budget') return 'reduce';
+  if (normalized === 'buy' || normalized === 'sell' || normalized === 'add' || normalized === 'reduce' || normalized === 'delay' || normalized === 'review') {
     return normalized;
   }
   return undefined;
@@ -67,8 +80,8 @@ function computeJudgmentTrend(
 
 function computeJudgmentSuggestion(level: JudgmentQualityLevel): string {
   if (level === 'high') return '继续保持当前的决策节奏，你的判断质量稳定';
-  if (level === 'medium') return '注意在情绪略高时暂停决策，降低冲动交易比例';
-  return '建议近期降低交易频率，等情绪平复后再做判断';
+  if (level === 'medium') return '注意在情绪略高时暂停决策，降低冲动消费比例';
+  return '建议近期降低大额消费频率，等情绪平复后再做判断';
 }
 
 
@@ -86,36 +99,43 @@ function inferTagUpdates(
   const trigger = scenarioPayload?.trigger_reason as string | undefined;
   const patterns = behaviorPatterns || [];
 
-  // System-detected: chasing
+  // System-detected: chasing (盲目跟风 / 冲动消费)
   if (
     (intent === 'buy' || intent === 'add') &&
-    (trigger === '连续上涨' || trigger === '看到大涨')
+    (trigger === '同学都换新机' || trigger === '限时优惠' || trigger === '博主种草' || trigger === '连续上涨' || trigger === '看到大涨')
   ) {
     updates.push({
-      tag: '追涨倾向',
+      tag: '盲目跟风',
       type: 'add',
-      source: '连续上涨触发 + 本次复盘确认',
+      source: '同伴影响或促销触发 + 本次复盘确认',
     });
   }
 
-  // System-detected: panic sell
+  // System-detected: panic / anxiety (过度焦虑)
   if (
-    (intent === 'sell' || intent === 'reduce') &&
-    (trigger === '快速下跌' || trigger === '恐慌性抛盘')
+    (intent === 'sell' || intent === 'reduce' || intent === 'delay') &&
+    (trigger === '快速下跌' || trigger === '恐慌性抛盘' || trigger === '旧设备损坏')
   ) {
     updates.push({
-      tag: '恐慌卖出',
+      tag: '过度焦虑',
       type: 'add',
-      source: '快速下跌触发 + 本次复盘确认',
+      source: '焦虑触发 + 本次复盘确认',
     });
   }
 
   // User-confirmed patterns
   const tagNameMap: Record<string, string> = {
-    '追涨倾向': '追涨倾向',
-    '恐慌卖出': '恐慌卖出',
-    '频繁交易': '频繁交易',
-    '纪律稳定': '纪律稳定',
+    // 校园金融素养标签
+    '盲目跟风': '盲目跟风',
+    '冲动消费': '冲动消费',
+    '过度焦虑': '过度焦虑',
+    '分期依赖': '分期依赖',
+    '预算纪律稳定': '预算纪律稳定',
+    // 旧投资标签（向后兼容）
+    '追涨倾向': '盲目跟风',
+    '恐慌卖出': '过度焦虑',
+    '频繁交易': '分期依赖',
+    '纪律稳定': '预算纪律稳定',
     '计划执行偏差': '计划执行偏差',
     '情绪主导决策': '情绪主导决策',
   };
@@ -189,10 +209,11 @@ export function computeLearningFeedback(
 ): LearningFeedbackData | null {
   const payload = scenarioPayload || {};
 
-  const judgementScore = JUDGMENT_SCORE[formData.judgementQuality] ?? -1;
+  const normalizedQuality = normalizeJudgementQuality(formData.judgementQuality);
+  const judgementScore = JUDGMENT_SCORE[formData.judgementQuality] ?? (normalizedQuality ? JUDGMENT_SCORE[normalizedQuality] : -1);
 
   // "难以区分"：不计入历史，不算百分比重写，但行为标签和情绪数据仍展示
-  const isHardToTell = formData.judgementQuality === '难以区分';
+  const isHardToTell = normalizedQuality === '难以区分';
 
   // 非"难以区分"选项且无历史时返回 null
   if (!isHardToTell && judgementScore < 0 && existingJudgmentHistory.length === 0) return null;

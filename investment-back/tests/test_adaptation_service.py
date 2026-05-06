@@ -1,5 +1,5 @@
 """
-Unit tests for AdaptationService.
+Unit tests for AdaptationService in the campus financial-literacy coach domain.
 
 Tests cover all _adapt_* branches without requiring a real DB.
 Each test creates a minimal DecisionCard and UserProfile and asserts
@@ -149,23 +149,23 @@ def _adapt_from_learning_history(
 
     if metrics.high_emotion_flag:
         injected_actions.append(
-            "【情绪提示】近期情绪评分偏高，请在冷静后再审视本次判断"
+            "【情绪提示】近期情绪评分偏高，请在冷静期后再审视本次消费判断，避免冲动消费"
         )
     if metrics.declining_judgment_flag:
         injected_actions.append(
-            "【判断质量下滑】近期待验证的结论偏多，建议先等待信号确认再行动"
+            "【判断质量下滑】近期待验证的结论偏多，建议先补全预算和真实需求再行动"
         )
     if metrics.frequent_trading_flag:
         injected_actions.append(
-            "【交易频率偏高】当前判断质量均值偏低，建议降低交易频率"
+            "【分期依赖提醒】当前判断质量均值偏低，建议减少大额分期频率，先守住生活费安全线"
         )
 
     if metrics.high_emotion_flag or metrics.declining_judgment_flag:
         extra_risk = ""
         if metrics.high_emotion_flag:
-            extra_risk += "情绪评分近期偏高，当前决策受情绪影响的风险升高。 "
+            extra_risk += "情绪评分近期偏高，当前消费决策受冲动和攀比影响的风险升高。 "
         if metrics.declining_judgment_flag:
-            extra_risk += "判断质量近期有所下滑，需要更严格的验证标准。 "
+            extra_risk += "判断质量近期有所下滑，需要更严格地验证预算、需求和总成本。 "
         decision.primary_risks = extra_risk + decision.primary_risks
 
     if injected_actions:
@@ -179,28 +179,27 @@ def _adapt_from_learning_history(
 def _adapt_behavior_tags(
     decision: DecisionCard, tags: List[str]
 ) -> DecisionCard:
-    chasing = "chasing_rise" in tags or "追涨倾向" in tags
-    panic = "panic_sell" in tags or "恐慌卖出" in tags
-    frequent = "frequent_trading" in tags or "频繁交易" in tags
-    stable = "stable_discipline" in tags or "纪律稳定" in tags
+    chasing = "chasing_rise" in tags or "追涨倾向" in tags or "盲目跟风" in tags or "冲动消费" in tags
+    panic = "panic_sell" in tags or "恐慌卖出" in tags or "过度焦虑" in tags
+    frequent = "frequent_trading" in tags or "频繁交易" in tags or "分期依赖" in tags
+    stable = "stable_discipline" in tags or "纪律稳定" in tags or "预算纪律稳定" in tags
 
     if chasing:
         decision.next_step_actions.insert(
             0,
-            "【追涨提醒】请再次确认：本次判断是否因短期涨幅引发买入冲动？"
-            "建议与前次判断间隔至少 2 个交易日。",
+            "【盲目跟风提醒】请再次确认：本次消费是否因同伴影响、限时优惠或害怕落后引发？建议至少等待 48 小时后再重新判断。"
         )
     if panic:
         decision.next_step_actions.insert(
-            0, "【恐慌提醒】请先冷静 10 分钟，确认下跌是否已触及基本面变化。"
+            0, "【焦虑提醒】请先冷静 30 分钟，确认这是真实需求还是短期压力。"
         )
     if frequent:
         decision.next_step_actions.append(
-            "【频率提醒】建议减少换手频率，等待已有持仓信号验证后再考虑新操作。"
+            "【分期提醒】建议减少大额分期频率，先确认生活费安全线和还款压力。"
         )
     if stable:
         decision.next_step_actions.append(
-            "【保持纪律】您的历史判断质量稳定，建议继续维持当前节奏。"
+            "【保持纪律】你的预算纪律较稳定，建议继续维持记录和复盘节奏。"
         )
     return decision
 
@@ -212,7 +211,7 @@ def _adapt_risk_tolerance(
 ) -> DecisionCard:
     if tolerance == RiskTolerance.LOW:
         decision.primary_risks = (
-            "【风控提醒】低风险偏好用户建议严格控制单笔仓位不超过总仓位的 20%。\n"
+            "【预算提醒】低财务风险承受能力用户建议严格控制单笔大额消费，并保留至少一个月生活费安全垫。\n"
             + decision.primary_risks
         )
     return decision
@@ -224,10 +223,10 @@ def _adapt_holding_horizon(
     decision: DecisionCard, horizon: HoldingHorizon
 ) -> DecisionCard:
     if horizon == HoldingHorizon.SHORT:
-        decision.next_step_actions.append("建议在 3 个交易日内完成信号验证，逾期则重新评估")
+        decision.next_step_actions.append("建议在 3 天内完成预算和需求验证，逾期则重新评估")
     elif horizon == HoldingHorizon.LONG:
         decision.next_step_actions.append(
-            "【长期投资者提示】请忽略短期噪音，关注基本面逻辑是否发生实质变化"
+            "【长期规划提示】请忽略短期促销和攀比噪音，关注预算边界是否发生实质变化"
         )
     return decision
 
@@ -239,10 +238,10 @@ def _adapt_experience_level(
 ) -> DecisionCard:
     if experience == ExperienceLevel.NOVICE:
         decision.next_step_actions.append(
-            "【新手提示】每条建议都应转化为具体操作，例如设定价格提醒"
+            "【新手提示】每条建议都应转化为具体操作，例如设定预算上限和延迟购买提醒"
         )
     elif experience == ExperienceLevel.EXPERT:
-        decision.next_step_actions.append("【进阶建议】可进一步交叉验证该标的的行业对比和资金流向数据")
+        decision.next_step_actions.append("【进阶建议】可进一步交叉验证同类替代方案、总成本和机会成本")
     return decision
 
 
@@ -255,13 +254,13 @@ def _calculate_user_fit(
 ) -> UserFitSummary:
     if user_profile.experience_level == ExperienceLevel.NOVICE:
         return UserFitSummary(
-            fit="适合初学者，建议以学习为主，控制仓位，记录每次决策的理由",
-            unfit="不适合缺乏经验且追求快速收益的投资者",
+            fit="适合刚开始建立预算习惯的学生，建议以学习为主，记录每次消费决策的理由",
+            unfit="不适合完全不愿意记录预算或只追求即时满足的用户",
         )
     elif user_profile.experience_level == ExperienceLevel.EXPERT:
         return UserFitSummary(
-            fit="适合有体系的投资者，可以根据技术面和基本面综合判断",
-            unfit="不适合缺乏独立分析能力的投资者",
+            fit="适合已有预算体系的学生，可以结合必要性、总成本和替代方案综合判断",
+            unfit="不适合缺乏独立分析能力或拒绝核算还款压力的用户",
         )
     else:
         fit = decision.user_fit_summary.fit
@@ -269,11 +268,11 @@ def _calculate_user_fit(
         if learning_metrics and not learning_metrics.judgment_insufficient:
             if learning_metrics.judgment_trend_direction == "down":
                 fit = (
-                    "适合有一定基础但近期判断质量有所下滑的投资者，"
-                    "建议降低操作频率，重新验证判断方法"
+                    "适合有一定基础但近期判断质量有所下滑的学生，"
+                    "建议降低大额消费频率，重新验证预算和真实需求"
                 )
             elif learning_metrics.judgment_trend_direction == "up":
-                fit = "适合有一定基础的投资者，近期判断质量持续改善，可以维持当前节奏"
+                fit = "适合有一定预算基础的学生，近期判断质量持续改善，可以维持当前复盘节奏"
         return UserFitSummary(fit=fit, unfit=unfit)
 
 
@@ -361,8 +360,8 @@ class TestAdaptation_LearningHistory_ActionInjection(unittest.TestCase):
         metrics = LearningMetrics(frequent_trading_flag=True)
         result = _adapt_decision_for_user(card, profile, learning_metrics=metrics)
         self.assertTrue(
-            any("交易频率偏高" in a for a in result.next_step_actions),
-            f"Expected '交易频率偏高' in actions: {result.next_step_actions}",
+            any("分期依赖提醒" in a or "大额分期频率" in a for a in result.next_step_actions),
+            f"Expected installment-frequency action: {result.next_step_actions}",
         )
 
     def test_emotion_warning_prepended_not_appended(self):
@@ -409,8 +408,8 @@ class TestAdaptation_BehaviorTags(unittest.TestCase):
         profile = make_profile(behavior_tags=["chasing_rise"])
         result = _adapt_decision_for_user(card, profile)
         self.assertTrue(
-            any("追涨" in a for a in result.next_step_actions),
-            f"Expected '追涨' in actions: {result.next_step_actions}",
+            any("盲目跟风" in a or "同伴影响" in a for a in result.next_step_actions),
+            f"Expected peer-influence action: {result.next_step_actions}",
         )
 
     def test_panic_sell_tag_injects_action(self):
@@ -418,8 +417,8 @@ class TestAdaptation_BehaviorTags(unittest.TestCase):
         profile = make_profile(behavior_tags=["panic_sell"])
         result = _adapt_decision_for_user(card, profile)
         self.assertTrue(
-            any("恐慌" in a for a in result.next_step_actions),
-            f"Expected '恐慌' in actions: {result.next_step_actions}",
+            any("焦虑" in a or "短期压力" in a for a in result.next_step_actions),
+            f"Expected anxiety action: {result.next_step_actions}",
         )
 
     def test_frequent_trading_tag_appends_action(self):
@@ -427,8 +426,8 @@ class TestAdaptation_BehaviorTags(unittest.TestCase):
         profile = make_profile(behavior_tags=["frequent_trading"])
         result = _adapt_decision_for_user(card, profile)
         self.assertTrue(
-            any("换手频率" in a or "交易频率" in a for a in result.next_step_actions),
-            f"Expected frequent-trading action: {result.next_step_actions}",
+            any("大额分期频率" in a or "还款压力" in a for a in result.next_step_actions),
+            f"Expected installment-frequency action: {result.next_step_actions}",
         )
 
     def test_stable_discipline_tag_appends_encouragement(self):
@@ -443,11 +442,11 @@ class TestAdaptation_BehaviorTags(unittest.TestCase):
     def test_chinese_tag_labels_also_recognized(self):
         """Frontend-facing Chinese labels should be recognized too."""
         card = make_card()
-        profile = make_profile(behavior_tags=["追涨倾向"])
+        profile = make_profile(behavior_tags=["盲目跟风"])
         result = _adapt_decision_for_user(card, profile)
         self.assertTrue(
-            any("追涨" in a for a in result.next_step_actions),
-            f"Expected '追涨' from Chinese label: {result.next_step_actions}",
+            any("盲目跟风" in a for a in result.next_step_actions),
+            f"Expected peer-influence action from Chinese label: {result.next_step_actions}",
         )
 
 
@@ -458,22 +457,22 @@ class TestAdaptation_RiskTolerance(unittest.TestCase):
         card = make_card()
         profile = make_profile(risk=RiskTolerance.LOW)
         result = _adapt_decision_for_user(card, profile)
-        self.assertIn("风控提醒", result.primary_risks)
-        self.assertIn("20%", result.primary_risks)
+        self.assertIn("预算提醒", result.primary_risks)
+        self.assertIn("生活费安全垫", result.primary_risks)
 
     def test_high_risk_does_not_add_extra_messaging(self):
         """High risk users should not be overly patronized."""
         card = make_card()
         profile = make_profile(risk=RiskTolerance.HIGH)
         result = _adapt_decision_for_user(card, profile)
-        # Should NOT add "风控提醒" for HIGH risk
-        self.assertNotIn("风控提醒", result.primary_risks)
+        # Should NOT add "预算提醒" for HIGH risk
+        self.assertNotIn("预算提醒", result.primary_risks)
 
     def test_medium_risk_does_not_add_extra_messaging(self):
         card = make_card()
         profile = make_profile(risk=RiskTolerance.MEDIUM)
         result = _adapt_decision_for_user(card, profile)
-        self.assertNotIn("风控提醒", result.primary_risks)
+        self.assertNotIn("预算提醒", result.primary_risks)
 
 
 class TestAdaptation_HoldingHorizon(unittest.TestCase):
@@ -484,8 +483,8 @@ class TestAdaptation_HoldingHorizon(unittest.TestCase):
         profile = make_profile(horizon=HoldingHorizon.SHORT)
         result = _adapt_decision_for_user(card, profile)
         self.assertTrue(
-            any("3 个交易日" in a for a in result.next_step_actions),
-            f"Expected '3 个交易日' in actions: {result.next_step_actions}",
+            any("3 天" in a for a in result.next_step_actions),
+            f"Expected '3 天' in actions: {result.next_step_actions}",
         )
 
     def test_long_horizon_appends_ignore_short_noise(self):
@@ -493,8 +492,8 @@ class TestAdaptation_HoldingHorizon(unittest.TestCase):
         profile = make_profile(horizon=HoldingHorizon.LONG)
         result = _adapt_decision_for_user(card, profile)
         self.assertTrue(
-            any("忽略短期噪音" in a for a in result.next_step_actions),
-            f"Expected '忽略短期噪音' in actions: {result.next_step_actions}",
+            any("短期促销" in a or "攀比噪音" in a for a in result.next_step_actions),
+            f"Expected long-planning warning in actions: {result.next_step_actions}",
         )
 
     def test_medium_horizon_no_extra_action(self):
@@ -502,10 +501,10 @@ class TestAdaptation_HoldingHorizon(unittest.TestCase):
         card = make_card()
         profile = make_profile(horizon=HoldingHorizon.MEDIUM)
         result = _adapt_decision_for_user(card, profile)
-        # Should not add 3-day deadline or long-term noise warning
+        # Should not add 3-day deadline or long-planning warning
         for action in result.next_step_actions:
-            self.assertNotIn("3 个交易日", action)
-            self.assertNotIn("忽略短期噪音", action)
+            self.assertNotIn("3 天", action)
+            self.assertNotIn("短期促销", action)
 
 
 class TestAdaptation_ExperienceLevel(unittest.TestCase):
@@ -537,13 +536,13 @@ class TestAdaptation_UserFitSummary(unittest.TestCase):
         card = make_card()
         profile = make_profile(experience=ExperienceLevel.NOVICE)
         result = _adapt_decision_for_user(card, profile)
-        self.assertIn("初学者", result.user_fit_summary.fit)
+        self.assertIn("预算习惯", result.user_fit_summary.fit)
 
     def test_expert_fit_summary(self):
         card = make_card()
         profile = make_profile(experience=ExperienceLevel.EXPERT)
         result = _adapt_decision_for_user(card, profile)
-        self.assertIn("有体系", result.user_fit_summary.fit)
+        self.assertIn("预算体系", result.user_fit_summary.fit)
 
     def test_intermediate_with_declining_trend_adapts_fit(self):
         card = make_card()
@@ -556,7 +555,7 @@ class TestAdaptation_UserFitSummary(unittest.TestCase):
         result = _adapt_decision_for_user(card, profile, learning_metrics=metrics)
         # Should override base fit with declining-specific text
         self.assertTrue(
-            "判断质量" in result.user_fit_summary.fit or "操作频率" in result.user_fit_summary.fit,
+            "判断质量" in result.user_fit_summary.fit or "大额消费频率" in result.user_fit_summary.fit,
             f"Expected dynamic fit for declining trend, got: {result.user_fit_summary.fit}",
         )
 
@@ -590,13 +589,13 @@ class TestAdaptation_NoMetrics(unittest.TestCase):
         card = make_card()
         profile = make_profile(behavior_tags=["chasing_rise"])
         result = _adapt_decision_for_user(card, profile, learning_metrics=None)
-        self.assertTrue(any("追涨" in a for a in result.next_step_actions))
+        self.assertTrue(any("盲目跟风" in a or "同伴影响" in a for a in result.next_step_actions))
 
     def test_risk_tolerance_still_applied_without_metrics(self):
         card = make_card()
         profile = make_profile(risk=RiskTolerance.LOW)
         result = _adapt_decision_for_user(card, profile, learning_metrics=None)
-        self.assertIn("风控提醒", result.primary_risks)
+        self.assertIn("预算提醒", result.primary_risks)
 
 
 if __name__ == "__main__":

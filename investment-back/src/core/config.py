@@ -14,7 +14,6 @@ _UNSAFE_DEFAULTS = {
         "test-secret",
     },
     "AI_API_KEY": {
-        "a37cc339-b87a-45a1-bd09-035010baf1ef",
         "sk-test",
         "sk-placeholder",
         "",
@@ -28,7 +27,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
     # App
-    APP_NAME: str = "AI投资决策助手"
+    APP_NAME: str = "AI金融素养教练"
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = False
     ENVIRONMENT: str = "production"  # development | production
@@ -54,7 +53,7 @@ class Settings(BaseSettings):
     # AI
     AI_API_KEY: Optional[str] = "a37cc339-b87a-45a1-bd09-035010baf1ef"
     AI_MODEL: str = "glm-4-7-251222"
-    AI_API_BASE_URL: str = "https://ark.cn-beijing.volces.com/api/v3/chat/completions"
+    AI_API_BASE_URL: str = "https://ark.cn-beijing.volces.com/api/v3"
     AI_API_TIMEOUT: int = 30
 
     # Market data

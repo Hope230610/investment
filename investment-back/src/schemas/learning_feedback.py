@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 class TagUpdateSchema(BaseModel):
     """行为标签更新项"""
-    tag: str = Field(..., description="标签中文名称，如「追涨倾向」")
+    tag: str = Field(..., description="标签中文名称，如「盲目跟风」「过度焦虑」「分期依赖」")
     type: Literal["add", "remove", "upgrade"] = Field(..., description="更新类型")
     source: str = Field(..., description="标签来源说明")
 
@@ -23,8 +23,11 @@ class LearningFeedbackRequest(BaseModel):
     )
     judgment_quality: Literal[
         "主要来自判断",
+        "主要来自理性判断",
         "部分判断 + 部分运气",
+        "部分判断 + 部分情绪",
         "主要来自运气",
+        "主要来自情绪冲动",
         "难以区分",
     ] = Field(..., description="判断质量选项")
     emotion_level: int = Field(

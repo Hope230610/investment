@@ -22,8 +22,11 @@ logger = structlog.get_logger()
 # 判断质量分数映射（与 ProfileService.JUDGMENT_SCORE_MAP 保持一致）
 _JUDGMENT_SCORE_MAP = {
     "主要来自判断": 100,
+    "主要来自理性判断": 100,
     "部分判断 + 部分运气": 50,
+    "部分判断 + 部分情绪": 50,
     "主要来自运气": 0,
+    "主要来自情绪冲动": 0,
 }
 
 

@@ -76,11 +76,11 @@ describe('portfolio api helpers', () => {
   it('posts holding and transaction payloads as json', async () => {
     vi.stubGlobal('localStorage', { getItem: () => null, removeItem: vi.fn(), setItem: vi.fn() });
     mockJsonResponse(200, { id: 'h1' });
-    await postHolding({ stock_id: 'SH600519', stock_name: '贵州茅台', market: 'SH', quantity: 10, cost_price: 100, current_price: 110 });
+    await postHolding({ stock_id: 'SZ000200', stock_name: '5999元手机分期', market: 'SZ', quantity: 1, cost_price: 5999, current_price: 5999 });
     expect(globalThis.fetch).toHaveBeenLastCalledWith('/api/v1/portfolio/holdings', expect.objectContaining({ method: 'POST' }));
 
     mockJsonResponse(200, { id: 't1' });
-    await postTransaction({ stock_id: 'SH600519', stock_name: '贵州茅台', market: 'SH', side: 'buy', price: 100, quantity: 10, reason: 'test' });
+    await postTransaction({ stock_id: 'SZ000200', stock_name: '5999元手机分期', market: 'SZ', side: 'buy', price: 5999, quantity: 1, reason: '校园预算复盘' });
     expect(globalThis.fetch).toHaveBeenLastCalledWith('/api/v1/portfolio/transactions', expect.objectContaining({ method: 'POST' }));
   });
 });

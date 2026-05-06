@@ -1,5 +1,6 @@
 /**
- * E2E tests for the full analysis pipeline: single-stock / pre-trade / post-trade.
+ * E2E tests for the full AI financial literacy coach pipeline:
+ * campus decision check / pre-purchase cooling-off / post-decision review.
  *
  * Run:
  *   npx playwright test tests/e2e/analysis-pipeline.spec.ts
@@ -22,22 +23,22 @@ import {
 
 // ─── Shared selectors ───────────────────────────────────────────────────────────
 
-const STOCK_ID  = 'SH600519';
-const STOCK_NAME = '贵州茅台';
+const STOCK_ID  = 'SZ000200';
+const STOCK_NAME = '5999元手机分期';
 
-const POST_TRADE_STOCK_ID   = 'SZ002594';
-const POST_TRADE_STOCK_NAME = '比亚迪';
+const POST_TRADE_STOCK_ID   = 'SZ000200';
+const POST_TRADE_STOCK_NAME = '5999元手机分期';
 
 // ─── Scenario: Single Stock Analysis ─────────────────────────────────────────
 
-test('single-stock analysis: submit → result page renders', async ({ page }) => {
+test('campus product analysis: submit → result page renders coach guidance', async ({ page }) => {
   await loginAs(page);
 
   // Navigate via the home page scenario link
   await page.goto(BASE_URL);
   await page.waitForLoadState('networkidle');
 
-  // Click "单股咨询" scenario card
+  // Click the product risk assessment scenario card.
   await page.locator('a[href="/analysis/single-stock"]').first().click();
   await page.waitForURL(url => url.pathname.includes('single-stock'));
 
@@ -80,7 +81,7 @@ test('single-stock analysis: submit → result page renders', async ({ page }) =
 
 // ─── Scenario: Pre-Trade Check ───────────────────────────────────────────────
 
-test('pre-trade check: high-emotion flow → self-check panel shown', async ({ page }) => {
+test('pre-purchase check: high-emotion campus flow → cooling-off self-check shown', async ({ page }) => {
   await loginAs(page);
 
   await page.goto(
@@ -88,23 +89,23 @@ test('pre-trade check: high-emotion flow → self-check panel shown', async ({ p
   );
   await page.waitForLoadState('networkidle');
 
-  // Select intent: "买入"
-  await page.getByRole('button', { name: /^买入$/i }).click();
+  // Select intent: "购买 / 分期"
+  await page.getByRole('button', { name: /购买\s*\/\s*分期/i }).click();
 
-  // Select trigger: "连续上涨" (追涨)
-  await page.getByRole('button', { name: /^连续上涨$/i }).click();
+  // Select trigger: peer influence on campus.
+  await page.getByRole('button', { name: /^同学都换新机$/i }).click();
 
   // Emotion: slide to 4 (冲动)
   await page.locator('input[type="range"]').fill('4');
 
-  // "开始自检" button should appear (emotion > 3)
-  await expect(page.getByRole('button', { name: /开始自检/i })).toBeVisible();
+  // Cooling-off entry should appear (emotion > 3)
+  await expect(page.getByRole('button', { name: /进入消费冷静期/i })).toBeVisible();
 
   // Submit should not navigate — it should reveal the self-check panel
-  await page.getByRole('button', { name: /开始自检/i }).click();
+  await page.getByRole('button', { name: /进入消费冷静期/i }).click();
 
   // Self-check panel appears
-  await expect(page.getByRole('heading', { name: /交易前自检/i }).first()).toBeVisible();
+  await expect(page.getByRole('heading', { name: /消费冷静期自检/i }).first()).toBeVisible();
 
   // Answer all questions
   const yesButtons = page.locator('button', { hasText: '是' });
@@ -113,8 +114,8 @@ test('pre-trade check: high-emotion flow → self-check panel shown', async ({ p
     await yesButtons.nth(i).click();
   }
 
-  // "完成自检并生成分析" should be enabled
-  await page.getByRole('button', { name: /完成自检并生成分析/i }).click();
+  // "完成自检并生成决策卡" should be enabled
+  await page.getByRole('button', { name: /完成自检并生成决策卡/i }).click();
 
   await page.waitForURL(url => url.pathname.includes('/result'));
 
@@ -123,7 +124,7 @@ test('pre-trade check: high-emotion flow → self-check panel shown', async ({ p
   const result = await pollAnalysisResult<Record<string, unknown>>(page, analysisId, 'ready', 60_000);
 
   expect(['ready', 'partial_ready']).toContain(result.status);
-  // intervention should be present when emotion is high + trigger is chasing
+  // intervention should be present when emotion is high + peer influence trigger
   const intervention = result.intervention as Record<string, unknown> | undefined;
   expect(intervention).toBeTruthy();
   expect(intervention?.behavior_type).toBeTruthy();
@@ -131,7 +132,7 @@ test('pre-trade check: high-emotion flow → self-check panel shown', async ({ p
 
 // ─── Scenario: Post-Trade Review ──────────────────────────────────────────────
 
-test('post-trade review: submit → result page → learning feedback card shown', async ({ page }) => {
+test('post-decision campus review: submit → result page → learning feedback card shown', async ({ page }) => {
   await loginAs(page);
 
   await page.goto(
@@ -140,9 +141,9 @@ test('post-trade review: submit → result page → learning feedback card shown
   await page.waitForLoadState('networkidle');
 
   // Fill in required fields
-  await page.locator('input[placeholder*="买入"]').fill('在 25.6 元买入 30%');
-  await page.locator('textarea[placeholder*="价格变化"]').fill('E2E test post-trade review outcome');
-  await page.getByRole('button', { name: /主要来自判断/i }).click();
+  await page.locator('input[placeholder*="暂缓购买"]').fill('暂缓购买 5999 元手机，先比较校内二手和 3000 元替代方案');
+  await page.locator('textarea[placeholder*="本月余额变化"]').fill('E2E 校园预算复盘：本月余额保持安全，冲动感下降');
+  await page.getByRole('button', { name: /主要来自理性判断/i }).click();
 
   // Submit
   await page.getByRole('button', { name: /提交复盘/i }).click();
@@ -158,7 +159,7 @@ test('post-trade review: submit → result page → learning feedback card shown
   const card = page.locator('[role="dialog"]').first();
   await expect(card).toBeVisible();
 
-  // Card should show the "本次复盘" header
+  // Card should show the "本次复盘" header.
   await expect(page.getByText(/本次复盘.*系统学到了这些/i)).toBeVisible();
 });
 
