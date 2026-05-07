@@ -50,7 +50,8 @@ class AnalysisGenerationService:
             self._apply_growth_caution_context(result, scenario_payload)
             return result
 
-        if not detail.quote_snapshot and not detail.recent_history:
+        data_available = detail.quote_snapshot and detail.quote_snapshot.data_as_of is not None
+        if not data_available and not detail.recent_history:
             result = self._build_insufficient_data_result(detail, scenario, intervention)
             self._apply_holding_context(result, scenario_payload)
             self._apply_growth_caution_context(result, scenario_payload)

@@ -234,7 +234,7 @@ export default function ResultPage() {
 
   // Compute feedback once analysis is loaded and this is a post_trade_review
   useEffect(() => {
-    if (!analysis || analysis.status !== 'ready') return;
+    if (!analysis || (analysis.status !== 'ready' && analysis.status !== 'partial_ready')) return;
     if (analysis.scenario !== 'post_trade_review') return;
     if (!reviewFormData) return;
     // Don't show if permanently dismissed, max shows reached, or session-dismissed

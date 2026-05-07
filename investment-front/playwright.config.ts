@@ -27,6 +27,7 @@ export default defineConfig({
         ...process.env,
         DEBUG: 'true',
         ENVIRONMENT: 'development',
+        E2E_MOCK_MARKET: process.env['E2E_MOCK_MARKET'] ?? '1',
       },
     },
     {
