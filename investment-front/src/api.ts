@@ -154,15 +154,20 @@ export async function apiRequest<T>(url: string, options: ApiRequestOptions = {}
   });
 
   const payload = await parseResponseBody(response);
-  if (!response.ok) {
+  if (response.ok) {
+    return payload as T;
+  }
+
+  // Only clear session if we actually sent a token — avoids wiping a freshly
+  // saved guest session when a pre-auth request (e.g. notification summary)
+  // returns 401 before the bootstrap token is stored.
+  if (auth && headers.has('Authorization')) {
     if (response.status === 401 || response.status === 403) {
       clearAuthSession();
     }
-    const { message, code, request_id, retryable } = parseErrorPayload(payload, response.status);
-    throw new ApiError(message, response.status, code, request_id, retryable, payload);
   }
-
-  return payload as T;
+  const { message, code, request_id, retryable } = parseErrorPayload(payload, response.status);
+  throw new ApiError(message, response.status, code, request_id, retryable, payload);
 }
 
 export function apiGet<T>(url: string, options: Omit<ApiRequestOptions, 'method' | 'body'> = {}) {
